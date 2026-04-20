@@ -1,0 +1,104 @@
+{
+  "sources": [
+    {
+      "name": "google-news-software-internships",
+      "source_type": "news_query",
+      "url": "https://news.google.com/rss/search?q=software+engineering+internship+when:7d&hl=en-US&gl=US&ceid=US:en",
+      "category": "news",
+      "description": "Recent public news about software engineering internships",
+      "max_items": 15,
+      "fetch_article": true,
+      "tags": ["internships", "news"]
+    },
+    {
+      "name": "google-news-new-grad-hiring",
+      "source_type": "news_query",
+      "url": "https://news.google.com/rss/search?q=new+grad+software+engineer+hiring+when:7d&hl=en-US&gl=US&ceid=US:en",
+      "category": "news",
+      "description": "Recent public news about new-grad engineering hiring",
+      "max_items": 15,
+      "fetch_article": true,
+      "tags": ["new-grad", "news"]
+    },
+    {
+      "name": "google-news-recruiting-timeline",
+      "source_type": "news_query",
+      "url": "https://news.google.com/rss/search?q=internship+recruiting+timeline+software+when:14d&hl=en-US&gl=US&ceid=US:en",
+      "category": "recruiting",
+      "description": "Recruiting timeline and career prep articles",
+      "max_items": 15,
+      "fetch_article": true,
+      "tags": ["timeline", "career-advice"]
+    },
+    {
+      "name": "freecodecamp-news",
+      "source_type": "rss",
+      "url": "https://www.freecodecamp.org/news/rss/",
+      "category": "career_blog",
+      "description": "Broad developer and career content",
+      "max_items": 12,
+      "fetch_article": true,
+      "tags": ["career", "portfolio", "resume"]
+    },
+    {
+      "name": "stackoverflow-blog",
+      "source_type": "rss",
+      "url": "https://stackoverflow.blog/feed/",
+      "category": "career_blog",
+      "description": "Engineering and developer career trend content",
+      "max_items": 12,
+      "fetch_article": true,
+      "tags": ["engineering", "market"]
+    },
+    {
+      "name": "datadog-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/datadog/jobs?content=true",
+      "category": "jobs",
+      "description": "Public Datadog Greenhouse board",
+      "max_items": 20,
+      "filters": ["intern", "new grad", "graduate", "early career", "university"]
+    },
+    {
+      "name": "cloudflare-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs?content=true",
+      "category": "jobs",
+      "description": "Public Cloudflare Greenhouse board",
+      "max_items": 20,
+      "filters": ["intern", "new grad", "graduate", "early career", "university"]
+    },
+    {
+      "name": "asana-lever",
+      "source_type": "job_board",
+      "board_type": "lever",
+      "url": "https://api.lever.co/v0/postings/asana?mode=json",
+      "category": "jobs",
+      "description": "Public Asana Lever board",
+      "max_items": 20,
+      "filters": ["intern", "new grad", "graduate", "associate"]
+    },
+    {
+      "name": "youtube-channel-placeholder-1",
+      "source_type": "youtube",
+      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=REPLACE_WITH_PUBLIC_CHANNEL_ID",
+      "channel_id": "REPLACE_WITH_PUBLIC_CHANNEL_ID",
+      "category": "youtube",
+      "description": "Replace with a public early-career tech careers channel and set enabled true",
+      "enabled": false,
+      "max_items": 10
+    },
+    {
+      "name": "youtube-channel-placeholder-2",
+      "source_type": "youtube",
+      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=REPLACE_WITH_PUBLIC_CHANNEL_ID",
+      "channel_id": "REPLACE_WITH_PUBLIC_CHANNEL_ID",
+      "category": "youtube",
+      "description": "Second placeholder for a public recruiting/interview channel",
+      "enabled": false,
+      "max_items": 10
+    }
+  ]
+}

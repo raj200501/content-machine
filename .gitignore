@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+output/content_machine.db
+output/**/*.db
+output/logs/*.log
+output/published/staged/*
+!output/drafts/.gitkeep
+!output/rendered/.gitkeep
+!output/published/.gitkeep
+!output/logs/.gitkeep
