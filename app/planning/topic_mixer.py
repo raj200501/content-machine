@@ -7,7 +7,7 @@ from datetime import date
 from itertools import cycle
 
 from app.models import PlannedTopic
-from app.planning.taxonomy import DAILY_BUCKETS, EVERGREEN_ANGLES, HOOK_STYLES
+from app.planning.taxonomy import EVERGREEN_ANGLES, HOOK_STYLES, scaled_daily_buckets
 from app.source_ingest.source_ranker import infer_company
 from app.utils import chunked, json_loads, slugify
 
@@ -77,7 +77,7 @@ def build_daily_topics(
     topics: list[PlannedTopic] = []
     slot_index = 0
 
-    for category, quota in DAILY_BUCKETS.items():
+    for category, quota in scaled_daily_buckets(len(schedule_slots)).items():
         for _ in range(quota):
             if slot_index >= len(schedule_slots):
                 return topics

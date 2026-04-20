@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     meta_graph_api_version: str = "v19.0"
     public_media_base_url: str = ""
     user_agent: str = "content-machine/0.1 (+https://example.com/content-machine)"
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    r2_endpoint_url: str = ""
+    r2_region: str = "auto"
+    delete_staged_media_after_publish: bool = True
 
     piper_model_path: str = ""
     piper_voice: str = ""
@@ -89,6 +96,31 @@ class Settings(BaseSettings):
     @property
     def database_backend(self) -> str:
         return "turso" if self.use_turso else "sqlite"
+
+    @property
+    def use_r2_storage(self) -> bool:
+        return bool(
+            self.r2_account_id
+            and self.r2_access_key_id
+            and self.r2_secret_access_key
+            and self.r2_bucket
+        )
+
+    @property
+    def r2_s3_endpoint(self) -> str:
+        if self.r2_endpoint_url:
+            return self.r2_endpoint_url
+        return f"https://{self.r2_account_id}.r2.cloudflarestorage.com"
+
+    @property
+    def publish_ready(self) -> bool:
+        return bool(
+            self.instagram_access_token
+            and self.instagram_ig_user_id
+            and self.instagram_app_id
+            and self.instagram_app_secret
+            and self.public_media_base_url
+        )
 
     @property
     def turso_replica_path(self) -> Path:

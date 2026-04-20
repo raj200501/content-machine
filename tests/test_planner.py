@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.config import Settings
 from app.planning.calendar import day_schedule
+from app.planning.taxonomy import scaled_daily_buckets
 from app.planning.topic_mixer import build_daily_topics
 
 
@@ -52,3 +53,15 @@ def test_daily_topic_mix_respects_quota(tmp_path: Path) -> None:
     assert counts["resume_portfolio"] == 3
     assert counts["market_context"] == 2
     assert counts["motivational_community"] == 1
+
+
+def test_scaled_daily_buckets_for_five_posts() -> None:
+    quotas = scaled_daily_buckets(5)
+
+    assert sum(quotas.values()) == 5
+    assert quotas["openings_job_alert"] == 2
+    assert quotas["application_strategy"] == 1
+    assert quotas["interview_prep"] == 1
+    assert quotas["resume_portfolio"] == 1
+    assert quotas["market_context"] == 0
+    assert quotas["motivational_community"] == 0

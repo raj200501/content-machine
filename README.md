@@ -109,6 +109,13 @@ Optional provider and behavior controls:
 - `SOURCE_CONFIG_PATH`
 - `PUBLIC_MEDIA_BASE_URL`
 - `MEDIA_STAGING_DIR`
+- `DELETE_STAGED_MEDIA_AFTER_PUBLISH`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET`
+- `R2_ENDPOINT_URL`
+- `R2_REGION`
 - `PIPER_MODEL_PATH`
 - `MACOS_SAY_VOICE`
 - `LINUX_TTS_VOICE`
@@ -170,6 +177,22 @@ This repo uses the official publishing API only. It does not use browser automat
 
 Important: Meta publishing requires a publicly reachable `video_url`. The repo stages files into `MEDIA_STAGING_DIR`, but you must host that directory or sync it to public storage you control. This is not a paid hard dependency; it is a platform requirement of the official API.
 
+## Cloudflare R2 Setup
+
+For unattended GitHub-hosted publishing, the easiest storage path is Cloudflare R2.
+
+1. Create an R2 bucket.
+2. Create S3-compatible access keys for that bucket/account.
+3. Expose a public bucket URL or custom domain.
+4. Populate:
+   - `R2_ACCOUNT_ID`
+   - `R2_ACCESS_KEY_ID`
+   - `R2_SECRET_ACCESS_KEY`
+   - `R2_BUCKET`
+   - `PUBLIC_MEDIA_BASE_URL`
+
+When R2 is configured, the publisher uploads each rendered MP4, waits for Meta to ingest it, then deletes the remote object and local staged copy after publish success.
+
 ## Hugging Face Setup
 
 If you want provider-first visuals:
@@ -224,6 +247,12 @@ Publish ready posts:
 python -m app.cli publish-ready
 ```
 
+Run one automation scheduler tick:
+
+```bash
+python -m app.cli automation-tick
+```
+
 Run the full daily flow:
 
 ```bash
@@ -256,6 +285,33 @@ It installs:
 - `00:45` daily planning
 - `01:00` batch rendering
 - every 10 minutes from `08:00` to `22:00` publish worker
+
+## GitHub Actions
+
+The repo includes a scheduled GitHub Actions workflow at `.github/workflows/automation.yml`.
+
+Behavior:
+
+- runs every 10 minutes
+- uses `TIMEZONE` to decide when to refresh, plan, render, and publish
+- stays skipped until the required GitHub secrets exist
+- defaults to `POSTS_PER_DAY=5` and `BATCH_RENDER_SIZE=5`
+- uses local fallback rendering when `HF_TOKEN` is absent or provider generation fails
+
+Add these GitHub Actions secrets before expecting live posting:
+
+- `INSTAGRAM_ACCESS_TOKEN`
+- `INSTAGRAM_IG_USER_ID`
+- `INSTAGRAM_APP_ID`
+- `INSTAGRAM_APP_SECRET`
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET`
+- `PUBLIC_MEDIA_BASE_URL`
+- optionally `HF_TOKEN`
 
 Manual one-shot execution:
 
@@ -326,6 +382,7 @@ In dry run mode:
 
 - `ffmpeg not found`: run `./scripts/install_ffmpeg.sh`.
 - `PUBLIC_MEDIA_BASE_URL is required`: live Meta publishing needs a public video URL.
+- `GitHub workflow shows skipped`: one or more required secrets are still missing, so the scheduled job is intentionally not running live steps yet.
 - `HF` errors or quota failures: expected in some environments; the local renderer should take over automatically.
 - `No TTS engine available`: install `piper`, use macOS `say`, or install `espeak-ng` on Linux.
 - `Scripts already planned`: the planner is conservative and will not keep duplicating a fully planned day.

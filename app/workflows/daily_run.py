@@ -21,6 +21,6 @@ def run_daily(db: Database, settings: Settings) -> dict[str, dict]:
         settings,
         now=datetime.now(settings.tzinfo),
         ignore_schedule=settings.dry_run,
-        limit=settings.posts_per_day if settings.dry_run else 5,
+        limit=settings.posts_per_day,
     )
     return {"refresh": refresh, "plan": plan, "render": render, "publish": publish}

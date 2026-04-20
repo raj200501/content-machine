@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import OrderedDict
 
 DAILY_BUCKETS = OrderedDict(
@@ -14,6 +15,33 @@ DAILY_BUCKETS = OrderedDict(
         ("motivational_community", 1),
     ]
 )
+
+
+def scaled_daily_buckets(posts_per_day: int) -> OrderedDict[str, int]:
+    """Scale the default 20-post mix to any positive daily target."""
+
+    if posts_per_day <= 0:
+        raise ValueError("posts_per_day must be positive")
+
+    total_weight = sum(DAILY_BUCKETS.values())
+    scaled = OrderedDict((category, 0) for category in DAILY_BUCKETS)
+    remainders: list[tuple[float, int, str]] = []
+    assigned = 0
+
+    for category, weight in DAILY_BUCKETS.items():
+        exact = posts_per_day * weight / total_weight
+        whole = math.floor(exact)
+        scaled[category] = whole
+        assigned += whole
+        remainders.append((exact - whole, -weight, category))
+
+    for _remainder, _priority, category in sorted(remainders, key=lambda item: (-item[0], item[1], item[2]))[
+        : posts_per_day - assigned
+    ]:
+        scaled[category] += 1
+
+    return scaled
+
 
 HOOK_STYLES = {
     "openings_job_alert": [

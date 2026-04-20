@@ -142,6 +142,16 @@ def daily_run() -> None:
     console.print(stats)
 
 
+@app.command("automation-tick")
+def automation_tick() -> None:
+    db, settings = _ctx()
+    db.init_db()
+    from app.workflows.automation_tick import run_automation_tick
+
+    stats = run_automation_tick(db, settings)
+    console.print(stats)
+
+
 @app.command("metrics")
 def metrics() -> None:
     db, settings = _ctx()

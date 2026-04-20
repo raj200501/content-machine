@@ -4,6 +4,7 @@ from pathlib import Path
 from app.config import Settings
 from app.db import Database
 from app.models import RenderArtifact
+from app.workflows.automation_tick import run_automation_tick
 from app.workflows.plan_day import run_plan_day
 from app.workflows.publish_batch import run_publish_batch
 from app.workflows.render_batch import run_render_batch
@@ -80,3 +81,45 @@ def test_end_to_end_smoke(monkeypatch, tmp_path: Path) -> None:
     assert rendered["renders_succeeded"] == 2
     assert published["published"] == 1
     assert db.recent_published_posts(30)
+
+
+def test_automation_tick_runs_due_steps(monkeypatch, tmp_path: Path) -> None:
+    settings = Settings(
+        dry_run=True,
+        posts_per_day=5,
+        batch_render_size=5,
+        output_dir=tmp_path / "output",
+        assets_dir=tmp_path / "assets",
+        database_path=tmp_path / "db.sqlite",
+        media_staging_dir=tmp_path / "output" / "published" / "staged",
+        turso_database_url="",
+        turso_auth_token="",
+    )
+    settings.ensure_directories()
+    db = Database(settings.database_path, settings=settings)
+    db.init_db()
+
+    called = []
+
+    monkeypatch.setattr(
+        "app.workflows.automation_tick.run_refresh_sources",
+        lambda *args, **kwargs: called.append("refresh") or {"sources_ingested": 1, "relevant_items_found": 1},
+    )
+    monkeypatch.setattr(
+        "app.workflows.automation_tick.run_plan_day",
+        lambda *args, **kwargs: called.append("plan") or {"scripts_generated": 5, "fact_guard_softened": 0},
+    )
+    monkeypatch.setattr(
+        "app.workflows.automation_tick.run_render_batch",
+        lambda *args, **kwargs: called.append("render") or {"renders_succeeded": 5, "provider_failures": 0, "fallback_renders_used": 5},
+    )
+    monkeypatch.setattr(
+        "app.workflows.automation_tick.run_publish_batch",
+        lambda *args, **kwargs: called.append("publish") or {"published": 0, "blocked_duplicates": 0, "failed": 0},
+    )
+
+    now = datetime(2026, 4, 19, 9, 0, tzinfo=settings.tzinfo)
+    stats = run_automation_tick(db, settings, now=now)
+
+    assert called == ["refresh", "plan", "render", "publish"]
+    assert "publish" in stats
