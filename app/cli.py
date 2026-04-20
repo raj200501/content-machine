@@ -20,7 +20,7 @@ console = Console()
 def _ctx() -> tuple[Database, object]:
     settings = get_settings()
     configure_logging(settings.log_level)
-    db = Database(settings.database_path)
+    db = Database(settings.database_runtime_path, settings=settings)
     return db, settings
 
 
@@ -87,9 +87,9 @@ def _seed_smoke_items(db: Database, settings) -> None:
 
 @app.command("init-db")
 def init_db() -> None:
-    db, _settings = _ctx()
+    db, settings = _ctx()
     db.init_db()
-    console.print("Initialized SQLite schema.")
+    console.print(f"Initialized {settings.database_backend} schema.")
 
 
 @app.command("refresh-sources")

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     output_dir: Path = Path("output")
     assets_dir: Path = Path("assets")
     media_staging_dir: Path = Path("output/published/staged")
+    turso_database_url: str = ""
+    turso_auth_token: str = ""
+    turso_sync_interval_seconds: int = 300
 
     ffmpeg_binary: str = "ffmpeg"
     ffprobe_binary: str = "ffprobe"
@@ -80,6 +83,23 @@ class Settings(BaseSettings):
         return ZoneInfo(self.timezone)
 
     @property
+    def use_turso(self) -> bool:
+        return bool(self.turso_database_url and self.turso_auth_token)
+
+    @property
+    def database_backend(self) -> str:
+        return "turso" if self.use_turso else "sqlite"
+
+    @property
+    def turso_replica_path(self) -> Path:
+        suffix = self.database_path.suffix or ".db"
+        return self.database_path.with_name(f"{self.database_path.stem}_turso_replica{suffix}")
+
+    @property
+    def database_runtime_path(self) -> Path:
+        return self.turso_replica_path if self.use_turso else self.database_path
+
+    @property
     def draft_dir(self) -> Path:
         return self.output_dir / "drafts"
 
@@ -111,6 +131,7 @@ class Settings(BaseSettings):
         ):
             path.mkdir(parents=True, exist_ok=True)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self.database_runtime_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache(maxsize=1)

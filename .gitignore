@@ -7,6 +7,10 @@ __pycache__/
 
 output/content_machine.db
 output/**/*.db
+output/**/*_turso_replica.db*
+output/drafts/*
+output/rendered/*
+output/published/*
 output/logs/*.log
 output/published/staged/*
 !output/drafts/.gitkeep

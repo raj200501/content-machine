@@ -1,4 +1,4 @@
-"""SQLite persistence layer."""
+"""SQLite/libSQL persistence layer."""
 
 from __future__ import annotations
 
@@ -7,7 +7,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from app.config import Settings, get_settings
 from app.utils import iso_now, json_dumps
+
+try:  # pragma: no cover - optional dependency in local test envs.
+    import libsql
+except Exception:  # pragma: no cover
+    libsql = None
 
 
 SCHEMA = """
@@ -169,18 +175,97 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
 
 
 class Database:
-    """Small SQLite helper with row-dict output."""
+    """Small SQLite/libSQL helper with row-dict output."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = Path(path)
+    def __init__(self, path: Path, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
+        requested_path = Path(path)
+        if self.settings.use_turso and requested_path == self.settings.database_path:
+            self.path = self.settings.database_runtime_path
+        else:
+            self.path = requested_path
+        self._has_synced_replica = False
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    @contextmanager
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
-        conn.row_factory = sqlite3.Row
+    @property
+    def backend_name(self) -> str:
+        return self.settings.database_backend
+
+    def _open_connection(self) -> Any:
+        if self.settings.use_turso:
+            if libsql is None:
+                raise RuntimeError(
+                    "Turso is configured but the 'libsql' package is not installed. "
+                    "Install project dependencies or unset TURSO_DATABASE_URL/TURSO_AUTH_TOKEN."
+                )
+            return libsql.connect(
+                str(self.path),
+                sync_url=self.settings.turso_database_url,
+                auth_token=self.settings.turso_auth_token,
+                sync_interval=self.settings.turso_sync_interval_seconds,
+            )
+        return sqlite3.connect(self.path)
+
+    def _configure_connection(self, conn: Any) -> None:
+        try:
+            conn.row_factory = sqlite3.Row
+        except Exception:
+            pass
         conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA journal_mode=WAL")
+        if not self.settings.use_turso:
+            conn.execute("PRAGMA journal_mode=WAL")
+
+    def _maybe_sync(self, conn: Any, *, force: bool = False) -> None:
+        if not self.settings.use_turso or not hasattr(conn, "sync"):
+            return
+        if force or not self._has_synced_replica:
+            conn.sync()
+            self._has_synced_replica = True
+
+    def _column_names(self, cursor: Any) -> list[str]:
+        description = getattr(cursor, "description", None) or []
+        names: list[str] = []
+        for column in description:
+            if isinstance(column, (list, tuple)) and column:
+                names.append(str(column[0]))
+            elif column is not None:
+                names.append(str(column))
+        return names
+
+    def _row_to_dict(self, row: Any, column_names: list[str] | None = None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        if isinstance(row, dict):
+            return dict(row)
+        try:
+            return dict(row)
+        except Exception:
+            pass
+        if hasattr(row, "keys"):
+            try:
+                return {key: row[key] for key in row.keys()}
+            except Exception:
+                pass
+        if column_names and isinstance(row, (list, tuple)):
+            return {name: row[index] for index, name in enumerate(column_names) if index < len(row)}
+        raise TypeError(f"Unsupported database row type: {type(row)!r}")
+
+    def _fetchone_dict(self, cursor: Any) -> dict[str, Any] | None:
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_dict(row, self._column_names(cursor))
+
+    def _fetchall_dicts(self, cursor: Any) -> list[dict[str, Any]]:
+        rows = cursor.fetchall()
+        column_names = self._column_names(cursor)
+        return [self._row_to_dict(row, column_names) for row in rows]
+
+    @contextmanager
+    def connect(self) -> Any:
+        conn = self._open_connection()
+        self._configure_connection(conn)
+        self._maybe_sync(conn)
         try:
             yield conn
             conn.commit()
@@ -190,6 +275,7 @@ class Database:
     def init_db(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            self._maybe_sync(conn, force=True)
 
     def upsert_source(self, name: str, source_type: str, config: dict[str, Any]) -> int:
         now = iso_now()
@@ -205,7 +291,7 @@ class Database:
                 """,
                 (name, source_type, json_dumps(config), now, now),
             )
-            row = conn.execute("SELECT id FROM sources WHERE name = ?", (name,)).fetchone()
+            row = self._fetchone_dict(conn.execute("SELECT id FROM sources WHERE name = ?", (name,)))
             return int(row["id"])
 
     def source_item_exists(self, source_url: str, normalized_title: str, duplicate_hash: str) -> bool:
@@ -260,7 +346,7 @@ class Database:
 
     def recent_source_items(self, days: int = 30, limit: int = 500) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 """
                 SELECT * FROM source_items
                 WHERE datetime(created_at) >= datetime('now', ?)
@@ -268,51 +354,50 @@ class Database:
                 LIMIT ?
                 """,
                 (f"-{days} day", limit),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)
 
     def source_items_by_ids(self, item_ids: list[int]) -> list[dict[str, Any]]:
         if not item_ids:
             return []
         placeholders = ", ".join("?" for _ in item_ids)
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 f"SELECT * FROM source_items WHERE id IN ({placeholders})",
                 item_ids,
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)
 
     def recent_scripts(self, days: int = 30) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 """
                 SELECT * FROM scripts
                 WHERE datetime(created_at) >= datetime('now', ?)
                 ORDER BY created_at DESC
                 """,
                 (f"-{days} day",),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)
 
     def scripts_for_day(self, day: str) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 "SELECT * FROM scripts WHERE script_date = ? ORDER BY scheduled_at",
                 (day,),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)
 
     def script_by_id(self, script_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
-            row = conn.execute("SELECT * FROM scripts WHERE id = ?", (script_id,)).fetchone()
-            return dict(row) if row else None
+            return self._fetchone_dict(conn.execute("SELECT * FROM scripts WHERE id = ?", (script_id,)))
 
     def count_scripts_for_day(self, day: str) -> int:
         with self.connect() as conn:
-            row = conn.execute(
+            row = self._fetchone_dict(conn.execute(
                 "SELECT COUNT(*) AS count FROM scripts WHERE script_date = ?",
                 (day,),
-            ).fetchone()
+            ))
             return int(row["count"])
 
     def insert_content_topic(self, payload: dict[str, Any]) -> int:
@@ -320,10 +405,20 @@ class Database:
         with self.connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO content_topics(
+                INSERT INTO content_topics(
                     day, slot_index, scheduled_at, category, hook_style, title, angle,
                     company, source_item_ids, freshness_score, metadata_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(day, slot_index) DO UPDATE SET
+                    scheduled_at=excluded.scheduled_at,
+                    category=excluded.category,
+                    hook_style=excluded.hook_style,
+                    title=excluded.title,
+                    angle=excluded.angle,
+                    company=excluded.company,
+                    source_item_ids=excluded.source_item_ids,
+                    freshness_score=excluded.freshness_score,
+                    metadata_json=excluded.metadata_json
                 """,
                 (
                     payload["day"],
@@ -340,13 +435,13 @@ class Database:
                     now,
                 ),
             )
-            row = conn.execute(
+            row = self._fetchone_dict(conn.execute(
                 """
                 SELECT id FROM content_topics
                 WHERE day = ? AND slot_index = ?
                 """,
                 (payload["day"], payload["slot_index"]),
-            ).fetchone()
+            ))
             return int(row["id"])
 
     def insert_script(self, payload: dict[str, Any]) -> int:
@@ -417,8 +512,7 @@ class Database:
         query += " ORDER BY s.scheduled_at LIMIT ?"
         params.append(limit)
         with self.connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-            return [dict(row) for row in rows]
+            return self._fetchall_dicts(conn.execute(query, params))
 
     def insert_media_asset(self, script_id: int, asset_type: str, file_path: str, provider: str, metadata: dict[str, Any]) -> int:
         with self.connect() as conn:
@@ -523,8 +617,7 @@ class Database:
         query += " ORDER BY p.scheduled_at LIMIT ?"
         params.append(limit)
         with self.connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-            return [dict(row) for row in rows]
+            return self._fetchall_dicts(conn.execute(query, params))
 
     def update_publish_job(self, publish_job_id: int, **fields: Any) -> None:
         if not fields:
@@ -570,15 +663,15 @@ class Database:
 
     def recent_published_posts(self, days: int = 30) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 """
                 SELECT * FROM published_posts
                 WHERE datetime(published_at) >= datetime('now', ?)
                 ORDER BY published_at DESC
                 """,
                 (f"-{days} day",),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)
 
     def set_metric(self, metric_date: str, metric_name: str, metric_value: float, notes: str = "") -> None:
         with self.connect() as conn:
@@ -595,7 +688,7 @@ class Database:
 
     def metrics_for_day(self, metric_date: str) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 """
                 SELECT metric_name, metric_value, notes
                 FROM daily_metrics
@@ -603,5 +696,5 @@ class Database:
                 ORDER BY metric_name
                 """,
                 (metric_date,),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )
+            return self._fetchall_dicts(cursor)

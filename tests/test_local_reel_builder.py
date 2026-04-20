@@ -16,6 +16,8 @@ def test_local_reel_builder_creates_artifacts(tmp_path: Path) -> None:
         assets_dir=tmp_path / "assets",
         database_path=tmp_path / "db.sqlite",
         media_staging_dir=tmp_path / "output" / "published" / "staged",
+        turso_database_url="",
+        turso_auth_token="",
     )
     settings.ensure_directories()
     builder = LocalFallbackReelBuilder(settings)

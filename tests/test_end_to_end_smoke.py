@@ -43,9 +43,11 @@ def test_end_to_end_smoke(monkeypatch, tmp_path: Path) -> None:
         assets_dir=tmp_path / "assets",
         database_path=tmp_path / "db.sqlite",
         media_staging_dir=tmp_path / "output" / "published" / "staged",
+        turso_database_url="",
+        turso_auth_token="",
     )
     settings.ensure_directories()
-    db = Database(settings.database_path)
+    db = Database(settings.database_path, settings=settings)
     db.init_db()
     _seed_source_items(db, settings)
 

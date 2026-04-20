@@ -5,7 +5,7 @@
 The default design is free-tier-first:
 
 - Public RSS, news, careers pages, public job boards, and optional public YouTube transcripts.
-- SQLite for local state.
+- SQLite for local state, with optional Turso/libSQL cloud sync.
 - FFmpeg for deterministic rendering.
 - Local-first TTS with `piper`, macOS `say`, or `espeak`, with a last-resort silent fallback.
 - Hugging Face is optional and best-effort. If quota fails or the provider errors, the local reel builder still produces publishable vertical MP4 reels.
@@ -26,7 +26,7 @@ Every day the system is designed to:
 ## Architecture
 
 - `app/config.py`: env-driven runtime config via Pydantic.
-- `app/db.py`: SQLite schema and persistence helpers.
+- `app/db.py`: SQLite/libSQL schema and persistence helpers.
 - `app/source_ingest/`: RSS, article extraction, job board ingestion, YouTube ingestion, dedupe, ranking, starter source definitions.
 - `app/planning/`: 30-day-aware taxonomy, freshness, topic mixing, scheduling.
 - `app/writing/`: deterministic script generation, captions, fact guard.
@@ -76,7 +76,7 @@ That script:
 
 - creates `.venv`
 - installs Python dependencies
-- initializes the SQLite database
+- initializes the database
 
 ## Environment Variables
 
@@ -103,12 +103,59 @@ Optional provider and behavior controls:
 - `PUBLICATION_START_HOUR`
 - `PUBLICATION_END_HOUR`
 - `DATABASE_PATH`
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- `TURSO_SYNC_INTERVAL_SECONDS`
 - `SOURCE_CONFIG_PATH`
 - `PUBLIC_MEDIA_BASE_URL`
 - `MEDIA_STAGING_DIR`
 - `PIPER_MODEL_PATH`
 - `MACOS_SAY_VOICE`
 - `LINUX_TTS_VOICE`
+
+## Database Modes
+
+The repo now supports two persistence modes with the same schema and workflows:
+
+- Local SQLite fallback:
+  - default behavior when `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are unset
+  - state lives only in `DATABASE_PATH`
+- Turso embedded replica:
+  - enabled when both `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are set
+  - `DATABASE_PATH` remains your plain SQLite path, and the app creates a sibling `*_turso_replica.db` file for the embedded replica
+  - reads happen from the local file after sync
+  - writes are delegated to the remote Turso primary and reflected back into the local replica
+
+This keeps local development simple while allowing GitHub-hosted automation to persist state across runs.
+
+## Turso Setup
+
+If you want a free managed DB with SQLite compatibility, Turso is the easiest fit for this repo.
+
+1. Install the Turso CLI.
+2. Log in with `turso auth login`.
+3. Create a DB, for example:
+   ```bash
+   turso db create content-machine
+   ```
+4. Get the DB URL:
+   ```bash
+   turso db show --url content-machine
+   ```
+5. Create a DB token:
+   ```bash
+   turso db tokens create content-machine
+   ```
+6. Put the returned values into:
+   - local `.env`
+   - GitHub Actions secrets if you are running scheduled workflows there
+
+Relevant Turso docs:
+
+- Pricing: https://turso.tech/pricing
+- Python quickstart: https://docs.turso.tech/sdk/python/quickstart
+- CLI auth: https://docs.turso.tech/cli/authentication
+- DB token creation: https://docs.turso.tech/cli/db/tokens/create
 
 ## Instagram / Meta Setup
 
@@ -234,7 +281,7 @@ This means the repo remains valuable even when external AI generation is sparse.
 
 ## Data Model
 
-SQLite tables created by `init-db`:
+SQLite/libSQL tables created by `init-db`:
 
 - `sources`
 - `source_items`

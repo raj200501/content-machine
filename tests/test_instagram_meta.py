@@ -26,6 +26,8 @@ def test_instagram_meta_publish_flow(monkeypatch, tmp_path: Path) -> None:
         database_path=tmp_path / "db.sqlite",
         media_staging_dir=tmp_path / "output" / "published" / "staged",
         public_media_base_url="https://cdn.example.com/reels",
+        turso_database_url="",
+        turso_auth_token="",
     )
     settings.ensure_directories()
     publisher = InstagramMetaPublisher(settings)

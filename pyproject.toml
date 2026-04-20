@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12",
   "feedparser>=6.0",
+  "libsql>=0.1",
   "Pillow>=10.3",
   "pydantic>=2.7",
   "pydantic-settings>=2.2",

@@ -2,9 +2,38 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
+from functools import lru_cache
 from pathlib import Path
 
 from app.utils import ensure_directory, run_command
+
+LOG = logging.getLogger(__name__)
+
+
+def _escape_filter_value(value: str) -> str:
+    escaped = str(value)
+    for original, replacement in (
+        ("\\", r"\\"),
+        (":", r"\:"),
+        (",", r"\,"),
+        ("'", r"\'"),
+        ("[", r"\["),
+        ("]", r"\]"),
+    ):
+        escaped = escaped.replace(original, replacement)
+    return escaped
+
+
+@lru_cache(maxsize=8)
+def _ffmpeg_has_filter(ffmpeg_binary: str, filter_name: str) -> bool:
+    result = run_command(
+        [ffmpeg_binary, "-hide_banner", "-h", f"filter={filter_name}"],
+        check=False,
+    )
+    combined = f"{result.stdout or ''}\n{result.stderr or ''}"
+    return "Unknown filter" not in combined
 
 
 def create_scene_clip(ffmpeg_binary: str, image_path: Path, duration: float, output_path: Path) -> Path:
@@ -116,7 +145,16 @@ def mux_audio(ffmpeg_binary: str, video_path: Path, voice_path: Path, output_pat
 
 def burn_subtitles(ffmpeg_binary: str, video_path: Path, subtitles_path: Path, output_path: Path) -> Path:
     ensure_directory(output_path.parent)
+    if not _ffmpeg_has_filter(ffmpeg_binary, "subtitles"):
+        LOG.warning("ffmpeg '%s' does not support the subtitles filter; using unburned video fallback", ffmpeg_binary)
+        shutil.copyfile(video_path, output_path)
+        return output_path
+
     style = "Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H30000000,BorderStyle=3,Outline=1,Shadow=0,Alignment=2,MarginV=110"
+    subtitle_filter = (
+        f"subtitles=filename={_escape_filter_value(subtitles_path.name)}:"
+        f"force_style={_escape_filter_value(style)}"
+    )
     run_command(
         [
             ffmpeg_binary,
@@ -124,7 +162,7 @@ def burn_subtitles(ffmpeg_binary: str, video_path: Path, subtitles_path: Path, o
             "-i",
             str(video_path),
             "-vf",
-            f"subtitles={subtitles_path.name}:force_style='{style}'",
+            subtitle_filter,
             "-c:v",
             "libx264",
             "-preset",
