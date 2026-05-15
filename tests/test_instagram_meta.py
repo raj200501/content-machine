@@ -99,3 +99,51 @@ def test_instagram_meta_r2_stage_and_cleanup(monkeypatch, tmp_path: Path) -> Non
     publisher.cleanup_staged_media(staged_path, object_key)
     assert not staged_path.exists()
     assert deleted == [("careerstacked-media", "reels/sample-reel.mp4")]
+
+
+def test_instagram_meta_discovers_connected_accounts(monkeypatch, tmp_path: Path) -> None:
+    settings = Settings(
+        instagram_access_token="token",
+        output_dir=tmp_path / "output",
+        assets_dir=tmp_path / "assets",
+        database_path=tmp_path / "db.sqlite",
+        media_staging_dir=tmp_path / "output" / "published" / "staged",
+        turso_database_url="",
+        turso_auth_token="",
+    )
+    publisher = InstagramMetaPublisher(settings)
+
+    def fake_request(method: str, url: str, timeout: int, **kwargs):
+        assert method == "GET"
+        assert url.endswith("/me/accounts")
+        assert kwargs["params"]["access_token"] == "token"
+        return DummyResponse(
+            {
+                "data": [
+                    {
+                        "id": "page_1",
+                        "name": "Career Page",
+                        "instagram_business_account": {
+                            "id": "ig_1",
+                            "username": "careerstacked",
+                            "account_type": "BUSINESS",
+                        },
+                    },
+                    {"id": "page_2", "name": "No Instagram"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(publisher.session, "request", fake_request)
+
+    accounts = publisher.connected_instagram_accounts()
+
+    assert accounts == [
+        {
+            "page_id": "page_1",
+            "page_name": "Career Page",
+            "instagram_ig_user_id": "ig_1",
+            "username": "careerstacked",
+            "account_type": "BUSINESS",
+        }
+    ]

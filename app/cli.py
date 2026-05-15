@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -12,6 +13,7 @@ from app.config import get_settings
 from app.db import Database
 from app.logging_utils import configure_logging
 from app.scheduler import build_publication_slots
+from app.setup_status import build_setup_report
 
 app = typer.Typer(help="Automation CLI for daily internship/new-grad reel generation.")
 console = Console()
@@ -90,6 +92,86 @@ def init_db() -> None:
     db, settings = _ctx()
     db.init_db()
     console.print(f"Initialized {settings.database_backend} schema.")
+
+
+@app.command("setup-status")
+def setup_status(
+    strict_live: bool = typer.Option(False, "--strict-live", help="Exit non-zero unless live publishing is ready."),
+    strict_video: bool = typer.Option(
+        False,
+        "--strict-video",
+        help="Exit non-zero unless provider video generation is ready.",
+    ),
+) -> None:
+    settings = get_settings()
+    report = build_setup_report(settings)
+    table = Table(title="Content Machine setup status")
+    table.add_column("Area")
+    table.add_column("Item")
+    table.add_column("Status")
+    table.add_column("Details")
+    for check in report.checks:
+        table.add_row(check.category, check.name, check.status, check.detail)
+    console.print(table)
+
+    if report.ready_for_github_automation:
+        console.print("GitHub automation has the required local settings for live publishing.")
+    elif report.ready_for_live_publish:
+        console.print("Live publishing is configured locally; GitHub automation still needs Turso and R2 settings.")
+    else:
+        console.print("Live publishing is not ready yet. Run with DRY_RUN=true until the missing keys are set.")
+
+    if strict_live and not report.ready_for_live_publish:
+        raise typer.Exit(1)
+    if strict_video and not report.ready_for_provider_video:
+        raise typer.Exit(1)
+
+
+@app.command("sync-env")
+def sync_env(
+    env_file: Path = typer.Option(Path(".env"), "--env-file", help="Local env file to update."),
+    example_file: Path = typer.Option(Path(".env.example"), "--example-file", help="Template env file."),
+) -> None:
+    from app.env_sync import append_missing_env_values
+
+    added = append_missing_env_values(env_file, example_file)
+    if added:
+        console.print(f"Added {len(added)} missing env keys to {env_file}: {', '.join(added)}")
+    else:
+        console.print(f"{env_file} already has every key from {example_file}.")
+
+
+@app.command("instagram-accounts")
+def instagram_accounts() -> None:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    if not settings.instagram_access_token:
+        console.print("Set INSTAGRAM_ACCESS_TOKEN first, then rerun this command.")
+        raise typer.Exit(1)
+
+    from app.publishing.instagram_meta import InstagramMetaPublisher
+
+    accounts = InstagramMetaPublisher(settings).connected_instagram_accounts()
+    if not accounts:
+        console.print("No connected Instagram Professional accounts were returned for this token.")
+        raise typer.Exit(1)
+
+    table = Table(title="Connected Instagram accounts")
+    table.add_column("Page")
+    table.add_column("Page ID")
+    table.add_column("Instagram User ID")
+    table.add_column("Username")
+    table.add_column("Type")
+    for account in accounts:
+        table.add_row(
+            account["page_name"],
+            account["page_id"],
+            account["instagram_ig_user_id"],
+            account["username"],
+            account["account_type"],
+        )
+    console.print(table)
+    console.print("Use the Instagram User ID value for INSTAGRAM_IG_USER_ID.")
 
 
 @app.command("refresh-sources")

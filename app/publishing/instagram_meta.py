@@ -102,6 +102,37 @@ class InstagramMetaPublisher:
         data = self._request("POST", f"{self.settings.instagram_ig_user_id}/media", data=payload)
         return str(data["id"])
 
+    def connected_instagram_accounts(self) -> list[dict[str, str]]:
+        """Return Professional Instagram accounts connected to the token's Pages."""
+
+        if not self.settings.instagram_access_token:
+            raise RuntimeError("INSTAGRAM_ACCESS_TOKEN is required to discover connected Instagram accounts")
+
+        data = self._request(
+            "GET",
+            "me/accounts",
+            params={
+                "fields": "id,name,instagram_business_account{id,username,account_type}",
+                "access_token": self.settings.instagram_access_token,
+            },
+        )
+        accounts: list[dict[str, str]] = []
+        for page in data.get("data", []):
+            instagram_account = page.get("instagram_business_account") or {}
+            instagram_id = instagram_account.get("id")
+            if not instagram_id:
+                continue
+            accounts.append(
+                {
+                    "page_id": str(page.get("id", "")),
+                    "page_name": str(page.get("name", "")),
+                    "instagram_ig_user_id": str(instagram_id),
+                    "username": str(instagram_account.get("username", "")),
+                    "account_type": str(instagram_account.get("account_type", "")),
+                }
+            )
+        return accounts
+
     def poll_until_ready(self, creation_id: str, timeout_seconds: int = 600, interval_seconds: int = 10) -> dict:
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:

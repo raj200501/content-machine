@@ -28,6 +28,7 @@ def test_daily_topic_mix_respects_quota(tmp_path: Path) -> None:
         media_staging_dir=tmp_path / "output" / "published" / "staged",
         turso_database_url="",
         turso_auth_token="",
+        posts_per_day=20,
     )
     settings.ensure_directories()
     schedule = day_schedule(date(2026, 4, 19), settings)

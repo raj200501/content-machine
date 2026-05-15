@@ -72,6 +72,8 @@ cp .env.example .env
 ./scripts/bootstrap.sh
 ```
 
+For exact free-only dashboard instructions to finish Instagram, R2, Turso, Hugging Face, and GitHub setup, use [FINISH_REPO.md](/Users/rajkashikar/content-machine/FINISH_REPO.md).
+
 That script:
 
 - creates `.venv`
@@ -222,6 +224,26 @@ Initialize state:
 ```bash
 python -m app.cli init-db
 ```
+
+Check missing setup keys without printing secret values:
+
+```bash
+python -m app.cli setup-status
+```
+
+Add any missing `.env.example` keys to your local `.env` without overwriting existing values:
+
+```bash
+python -m app.cli sync-env
+```
+
+After `INSTAGRAM_ACCESS_TOKEN` is set, verify the connected Meta Page and Instagram Professional account:
+
+```bash
+python -m app.cli instagram-accounts
+```
+
+Use the displayed Instagram User ID as `INSTAGRAM_IG_USER_ID`.
 
 Refresh public sources:
 

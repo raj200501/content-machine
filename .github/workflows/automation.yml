@@ -61,7 +61,7 @@ jobs:
           POSTS_PER_DAY: "5"
           BATCH_RENDER_SIZE: "5"
           DRY_RUN: "false"
-          ENABLE_VIDEO_PROVIDER: "true"
+          ENABLE_VIDEO_PROVIDER: "false"
           ENABLE_LOCAL_FALLBACK: "true"
           ENABLE_YOUTUBE_TRANSCRIPTS: "true"
           PUBLICATION_START_HOUR: "8"

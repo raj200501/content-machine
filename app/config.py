@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     hf_video_model: str = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
     hf_image_model: str = "stabilityai/stable-diffusion-xl-base-1.0"
     enable_youtube_transcripts: bool = True
-    enable_video_provider: bool = True
+    enable_video_provider: bool = False
     enable_local_fallback: bool = True
     posts_per_day: int = 20
     batch_render_size: int = 20
