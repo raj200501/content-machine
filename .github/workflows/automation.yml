@@ -1,8 +1,9 @@
 name: content-machine-automation
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
+  # Keep scheduling disabled by default for private repos. Use local cron for the
+  # guaranteed zero-dollar setup, or re-add a schedule only after confirming the
+  # repository is public or private Actions minutes are safely within quota.
   workflow_dispatch:
 
 concurrency:
