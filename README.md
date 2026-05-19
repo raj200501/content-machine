@@ -191,11 +191,13 @@ The script serves `MEDIA_STAGING_DIR` locally and starts a TryCloudflare quick t
 
 The publisher stages files under `MEDIA_STAGING_DIR/reels/...`, so a tunnel rooted at `MEDIA_STAGING_DIR` serves the same `/reels/...` URL that Meta receives.
 
+For unattended local cron, `scripts/install_cron.sh` uses `scripts/run_with_public_media_tunnel.sh` around `publish-ready`. That wrapper creates a temporary tunnel for each publish run and injects its URL into the process, so `.env` can leave `PUBLIC_MEDIA_BASE_URL` blank when you are not using R2.
+
 ## Cloudflare R2 Setup
 
-For unattended GitHub-hosted publishing, the easiest storage path is Cloudflare R2.
+For persistent public media storage, one supported path is Cloudflare R2.
 
-R2 is optional. It has a free monthly allowance, but it is still a usage-based Cloudflare subscription, so skip it if you want the strict no-billing setup.
+R2 is optional. The scheduled GitHub workflow uses a temporary TryCloudflare tunnel and does not require R2. R2 has a free monthly allowance, but it is still a usage-based Cloudflare subscription, so skip it if you want the strict no-billing setup.
 
 1. Create an R2 bucket.
 2. Create S3-compatible access keys for that bucket/account.
@@ -307,9 +309,9 @@ Run a no-network smoke test:
 python -m app.cli smoke-test
 ```
 
-## Cron Installation
+## Local Cron Installation
 
-Install the production-style schedule:
+Optional local schedule:
 
 ```bash
 ./scripts/install_cron.sh
@@ -319,8 +321,8 @@ It installs:
 
 - `00:15` source refresh
 - `00:45` daily planning
-- `01:00` batch rendering
-- every 10 minutes from `08:00` to `22:00` publish worker
+- `01:00` batch rendering for 5 reels
+- every 10 minutes publish worker, which skips outside `08:00` to `22:00` and uses a temporary public media tunnel when `PUBLIC_MEDIA_BASE_URL` is blank
 
 ## GitHub Actions
 
@@ -328,12 +330,16 @@ The repo includes a GitHub Actions workflow at `.github/workflows/automation.yml
 
 Behavior:
 
-- scheduling is disabled by default for the strict free setup
+- scheduled CI covers the 5 publish windows in `TIMEZONE`; the first live run also refreshes and plans if needed
 - can be run manually with `workflow_dispatch`
-- uses `TIMEZONE` to decide when to refresh, plan, render, and publish
+- exits before checkout/install work when a seasonal duplicate schedule fires outside the local publish window
+- renders each due Reel in the same CI run that publishes it, so no runner-local media is expected to persist
+- starts a temporary TryCloudflare tunnel only inside the workflow run so Meta can fetch the MP4
 - stays skipped until the required GitHub secrets exist
 - defaults to `POSTS_PER_DAY=5` and `BATCH_RENDER_SIZE=5`
-- uses local fallback rendering when `HF_TOKEN` is absent or provider generation fails
+- keeps `ENABLE_VIDEO_PROVIDER=false` and uses local fallback rendering
+
+This repository is private, so standard Linux GitHub-hosted runners consume included private-repo Actions minutes. Keep GitHub billing/spending at zero; do not enable larger or paid runners.
 
 Add these GitHub Actions secrets before expecting live posting:
 
@@ -343,12 +349,8 @@ Add these GitHub Actions secrets before expecting live posting:
 - `INSTAGRAM_APP_SECRET`
 - `TURSO_DATABASE_URL`
 - `TURSO_AUTH_TOKEN`
-- `R2_ACCOUNT_ID`
-- `R2_ACCESS_KEY_ID`
-- `R2_SECRET_ACCESS_KEY`
-- `R2_BUCKET`
-- `PUBLIC_MEDIA_BASE_URL`
-- optionally `HF_TOKEN`
+
+Do not add `HF_TOKEN` for the strict-free setup. R2 and `PUBLIC_MEDIA_BASE_URL` are not required for the scheduled GitHub workflow because the workflow creates a temporary public media tunnel per run.
 
 Manual one-shot execution:
 

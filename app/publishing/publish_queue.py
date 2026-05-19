@@ -23,7 +23,7 @@ def publish_due_jobs(
     run_now = now or datetime.now(settings.tzinfo)
     due_jobs = db.due_publish_jobs(run_now.isoformat(), limit=limit, ignore_schedule=ignore_schedule)
     recent_posts = db.recent_published_posts(30)
-    stats = {"published": 0, "blocked_duplicates": 0, "failed": 0}
+    stats = {"published": 0, "blocked_duplicates": 0, "failed": 0, "missing_media": 0}
 
     for job in due_jobs:
         current_attempts = int(job.get("attempts", 0)) + 1
@@ -39,8 +39,26 @@ def publish_due_jobs(
 
         db.update_publish_job(job["id"], status="publishing", attempts=current_attempts)
         try:
+            render_path = Path(job["output_path"])
+            if not render_path.exists():
+                db.fail_render_job(
+                    job["render_job_id"],
+                    "Rendered media is not present on this runner.",
+                    {"reason": "ephemeral_runner"},
+                )
+                db.update_publish_job(
+                    job["id"],
+                    status="planned",
+                    render_job_id=None,
+                    attempts=current_attempts,
+                    last_error="Rendered media is not present on this runner; queued for rerender.",
+                )
+                db.update_script_status(job["script_id"], "planned")
+                stats["failed"] += 1
+                stats["missing_media"] += 1
+                continue
             result = publisher.publish_reel(
-                Path(job["output_path"]),
+                render_path,
                 job["caption"],
                 f"{job['script_id']}-{job['hook']}",
             )

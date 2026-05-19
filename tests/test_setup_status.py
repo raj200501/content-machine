@@ -57,3 +57,28 @@ def test_setup_report_detects_live_github_and_provider_readiness(tmp_path: Path)
     assert report.missing_r2_env_keys == ()
     assert report.missing_turso_env_keys == ()
     assert report.missing_video_provider_env_keys == ()
+
+
+def test_setup_report_allows_github_tunnel_without_r2_or_public_url(tmp_path: Path) -> None:
+    report = build_setup_report(
+        _settings(
+            tmp_path,
+            dry_run=False,
+            instagram_access_token="token",
+            instagram_ig_user_id="ig_1",
+            instagram_app_id="app_1",
+            instagram_app_secret="secret",
+            turso_database_url="libsql://example.turso.io",
+            turso_auth_token="db-token",
+        ),
+        check_binaries=False,
+    )
+
+    assert report.ready_for_live_publish is False
+    assert report.ready_for_github_automation is True
+    assert report.missing_r2_env_keys == (
+        "R2_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "R2_BUCKET",
+    )

@@ -34,18 +34,43 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
         results["plan"] = run_plan_day(db, settings, run_date=current.date())
         metrics = _metric_map(db, metric_date)
 
-    if metrics.get("renders_succeeded", 0) < settings.posts_per_day and _time_reached(current, time(1, 0)):
+    render_due_only = settings.publish_ready and not settings.dry_run
+    if render_due_only:
+        results["render_due"] = run_render_batch(
+            db,
+            settings,
+            count=settings.batch_render_size,
+            run_date=current.date(),
+            scheduled_before=current.isoformat(),
+        )
+    elif metrics.get("renders_succeeded", 0) < settings.posts_per_day and _time_reached(current, time(1, 0)):
         results["render"] = run_render_batch(db, settings, count=settings.batch_render_size, run_date=current.date())
 
     if settings.dry_run or settings.publish_ready:
-        results["publish"] = run_publish_batch(
+        publish = run_publish_batch(
             db,
             settings,
             now=current,
             ignore_schedule=settings.dry_run,
             limit=settings.posts_per_day,
         )
+        results["publish"] = publish
+        if publish.get("missing_media", 0) > 0:
+            results["render_missing"] = run_render_batch(
+                db,
+                settings,
+                count=settings.batch_render_size,
+                run_date=current.date(),
+                scheduled_before=current.isoformat(),
+            )
+            results["publish_retry"] = run_publish_batch(
+                db,
+                settings,
+                now=current,
+                ignore_schedule=settings.dry_run,
+                limit=settings.posts_per_day,
+            )
     else:
-        results["publish"] = {"published": 0, "blocked_duplicates": 0, "failed": 0, "skipped": 1}
+        results["publish"] = {"published": 0, "blocked_duplicates": 0, "failed": 0, "missing_media": 0, "skipped": 1}
 
     return results

@@ -16,6 +16,15 @@ LIVE_PUBLISH_ENV = (
     "PUBLIC_MEDIA_BASE_URL",
 )
 
+GITHUB_AUTOMATION_ENV = (
+    "INSTAGRAM_ACCESS_TOKEN",
+    "INSTAGRAM_IG_USER_ID",
+    "INSTAGRAM_APP_ID",
+    "INSTAGRAM_APP_SECRET",
+    "TURSO_DATABASE_URL",
+    "TURSO_AUTH_TOKEN",
+)
+
 R2_ENV = (
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
@@ -86,6 +95,7 @@ def build_setup_report(settings: Settings, *, check_binaries: bool = True) -> Se
 
     missing_live = _missing_env(settings, LIVE_PUBLISH_ENV)
     missing_r2 = _missing_env(settings, R2_ENV)
+    missing_github = _missing_env(settings, GITHUB_AUTOMATION_ENV)
     missing_turso = _missing_env(settings, TURSO_ENV)
     missing_video = _missing_env(settings, VIDEO_PROVIDER_ENV) if settings.enable_video_provider else ()
 
@@ -158,7 +168,7 @@ def build_setup_report(settings: Settings, *, check_binaries: bool = True) -> Se
             "ok" if not missing_r2 else "optional",
             "Cloudflare R2 upload settings are configured"
             if not missing_r2
-            else "Optional for GitHub-hosted publishing; local tunnel mode can skip: " + ", ".join(missing_r2),
+            else "Optional; GitHub Actions can use a temporary tunnel and skip: " + ", ".join(missing_r2),
             R2_ENV,
         )
     )
@@ -199,7 +209,7 @@ def build_setup_report(settings: Settings, *, check_binaries: bool = True) -> Se
     )
 
     ready_for_live = not missing_live and not settings.dry_run
-    ready_for_github = ready_for_live and not missing_r2 and not missing_turso
+    ready_for_github = not missing_github and not settings.dry_run
     ready_for_provider_video = settings.enable_video_provider and not missing_video
 
     return SetupReport(

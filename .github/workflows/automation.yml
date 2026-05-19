@@ -1,50 +1,85 @@
 name: content-machine-automation
 
 on:
-  # Keep scheduling disabled by default for private repos. Use local cron for the
-  # guaranteed zero-dollar setup, or re-add a schedule only after confirming the
-  # repository is public or private Actions minutes are safely within quota.
+  schedule:
+    # GitHub cron is UTC. These cover the five New York publish windows in
+    # both daylight and standard time; the first live run also refreshes/plans.
+    - cron: "5 2,3,12,13,19,20 * * *"
+    - cron: "35 15,16,22,23 * * *"
   workflow_dispatch:
 
 concurrency:
   group: content-machine-automation
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   automation:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
-      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && secrets.INSTAGRAM_APP_ID != '' && secrets.INSTAGRAM_APP_SECRET != '' && secrets.TURSO_DATABASE_URL != '' && secrets.TURSO_AUTH_TOKEN != '' && secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_BUCKET != '' && secrets.PUBLIC_MEDIA_BASE_URL != '' && 'true' || 'false' }}
+      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && secrets.INSTAGRAM_APP_ID != '' && secrets.INSTAGRAM_APP_SECRET != '' && secrets.TURSO_DATABASE_URL != '' && secrets.TURSO_AUTH_TOKEN != '' && 'true' || 'false' }}
     steps:
       - name: Skip until required secrets exist
         if: env.AUTOMATION_READY != 'true'
         run: echo "Required GitHub Actions secrets are still missing. Skipping automation run."
 
-      - name: Check out repository
+      - name: Check publish window
+        id: window
         if: env.AUTOMATION_READY == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          local_time="$(TZ=America/New_York date +%H:%M)"
+          case "$local_time" in
+            08:*|11:3*|15:*|18:3*|22:*)
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Outside publish window: $local_time America/New_York"
+              ;;
+          esac
+
+      - name: Check out repository
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
-        if: env.AUTOMATION_READY == 'true'
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install ffmpeg
-        if: env.AUTOMATION_READY == 'true'
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+
+      - name: Install cloudflared
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        run: |
+          curl -fsSL -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
 
       - name: Install Python dependencies
-        if: env.AUTOMATION_READY == 'true'
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run automation tick
-        if: env.AUTOMATION_READY == 'true'
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         env:
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_IG_USER_ID: ${{ secrets.INSTAGRAM_IG_USER_ID }}
@@ -52,12 +87,6 @@ jobs:
           INSTAGRAM_APP_SECRET: ${{ secrets.INSTAGRAM_APP_SECRET }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          PUBLIC_MEDIA_BASE_URL: ${{ secrets.PUBLIC_MEDIA_BASE_URL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TIMEZONE: America/New_York
           POSTS_PER_DAY: "5"
           BATCH_RENDER_SIZE: "5"
@@ -71,4 +100,4 @@ jobs:
           LOG_LEVEL: INFO
         run: |
           python -m app.cli init-db
-          python -m app.cli automation-tick
+          ./scripts/run_with_public_media_tunnel.sh python -m app.cli automation-tick

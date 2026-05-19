@@ -494,7 +494,12 @@ class Database:
                 (script_id, claim_text, json_dumps(evidence), int(supported), iso_now()),
             )
 
-    def list_renderable_scripts(self, day: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    def list_renderable_scripts(
+        self,
+        day: str | None = None,
+        limit: int = 20,
+        scheduled_before: str | None = None,
+    ) -> list[dict[str, Any]]:
         params: list[Any] = []
         query = """
             SELECT s.*, t.category, t.hook_style, t.company, t.angle
@@ -509,6 +514,9 @@ class Database:
         if day:
             query += " AND s.script_date = ?"
             params.append(day)
+        if scheduled_before:
+            query += " AND s.scheduled_at <= ?"
+            params.append(scheduled_before)
         query += " ORDER BY s.scheduled_at LIMIT ?"
         params.append(limit)
         with self.connect() as conn:

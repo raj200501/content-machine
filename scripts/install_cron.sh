@@ -13,8 +13,8 @@ CRON_BLOCK=$(cat <<EOF
 # content-machine schedule
 15 0 * * * cd "$ROOT_DIR" && "$PYTHON_BIN" -m app.cli refresh-sources >> "$ROOT_DIR/output/logs/cron_refresh.log" 2>&1
 45 0 * * * cd "$ROOT_DIR" && "$PYTHON_BIN" -m app.cli plan-day >> "$ROOT_DIR/output/logs/cron_plan.log" 2>&1
-0 1 * * * cd "$ROOT_DIR" && "$PYTHON_BIN" -m app.cli render-batch --count 20 >> "$ROOT_DIR/output/logs/cron_render.log" 2>&1
-*/10 8-22 * * * cd "$ROOT_DIR" && "$PYTHON_BIN" -m app.cli publish-ready >> "$ROOT_DIR/output/logs/cron_publish.log" 2>&1
+0 1 * * * cd "$ROOT_DIR" && "$PYTHON_BIN" -m app.cli render-batch --count 5 >> "$ROOT_DIR/output/logs/cron_render.log" 2>&1
+*/10 8-22 * * * cd "$ROOT_DIR" && "$ROOT_DIR/scripts/run_with_public_media_tunnel.sh" "$PYTHON_BIN" -m app.cli publish-ready >> "$ROOT_DIR/output/logs/cron_publish.log" 2>&1
 EOF
 )
 

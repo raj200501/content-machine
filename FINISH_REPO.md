@@ -202,6 +202,8 @@ PUBLIC_MEDIA_BASE_URL=https://YOUR_RANDOM_SUBDOMAIN.trycloudflare.com
 
 Keep this terminal open while running any live publish. If you stop the tunnel and start it again, the URL changes, so update `PUBLIC_MEDIA_BASE_URL`.
 
+For unattended local cron, you do not need to paste the temporary URL into `.env`. `scripts/install_cron.sh` uses `scripts/run_with_public_media_tunnel.sh` for publish jobs, and that wrapper starts the tunnel, reads the temporary URL, and passes it to the app for that run.
+
 Leave these blank for local tunnel mode:
 
 ```dotenv
@@ -212,9 +214,11 @@ R2_BUCKET=
 R2_ENDPOINT_URL=
 ```
 
-### 3.3 Optional R2 Mode For Unattended GitHub Publishing
+### 3.3 Optional R2 Mode For Persistent Public Storage
 
 Use this only if you decide the Cloudflare usage-based billing surface is acceptable. R2 can stay free if you use Standard storage, stay under the monthly free allowance, and delete staged media after publishing.
+
+The GitHub Actions workflow does not require R2 because it creates a temporary public tunnel during each publish run.
 
 1. Create a bucket named `content-machine-reels`.
 2. Choose `Standard` storage. Do not choose Infrequent Access.
@@ -264,7 +268,7 @@ Do not buy Hugging Face credits. Do not set up Inference Endpoints. Do not add a
 
 ## Step 5: Turso, Free
 
-Your local `.env` already has Turso values set. If you ever need to recreate them:
+GitHub-hosted automation needs persistent state, so configure Turso on the free plan. If `.env` does not already have Turso values:
 
 1. Install the Turso CLI.
 2. Run:
@@ -306,19 +310,17 @@ Your local `.env` already has Turso values set. If you ever need to recreate the
 
 Stay on the Turso Free plan.
 
-## Step 6: GitHub Actions, Free-Only Choice
+## Step 6: GitHub Actions, Free-Only Runner
 
-Free safest option: do not use GitHub Actions for scheduling. Use local cron:
+The repo workflow is configured to run from GitHub Actions, not a Mac background job. It covers the 5 publish windows, lets the first live run refresh and plan if needed, renders each due Reel in the same workflow run that publishes it, then exposes the staged MP4 through a temporary TryCloudflare tunnel for that run. Seasonal duplicate schedule runs exit before checkout/install work if they are outside the local publish window.
 
-```bash
-./scripts/install_cron.sh
-```
-
-Use GitHub Actions only if:
+Use GitHub Actions only while:
 
 - the repository is public, or
 - you are certain the private repo will stay inside included free minutes, and
 - your GitHub billing spending limit is zero or safe.
+
+Do not enable paid runners.
 
 To add repository secrets:
 
@@ -340,14 +342,9 @@ INSTAGRAM_APP_ID
 INSTAGRAM_APP_SECRET
 TURSO_DATABASE_URL
 TURSO_AUTH_TOKEN
-R2_ACCOUNT_ID
-R2_ACCESS_KEY_ID
-R2_SECRET_ACCESS_KEY
-R2_BUCKET
-PUBLIC_MEDIA_BASE_URL
 ```
 
-Do not add `HF_TOKEN` to GitHub if you want guaranteed free behavior. The workflow defaults `ENABLE_VIDEO_PROVIDER=false`.
+Do not add `HF_TOKEN` to GitHub if you want guaranteed free behavior. R2 secrets and `PUBLIC_MEDIA_BASE_URL` are not required for the GitHub workflow because it uses a temporary tunnel.
 
 ## Step 7: Final Verification
 

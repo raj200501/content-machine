@@ -16,9 +16,14 @@ def run_render_batch(
     *,
     count: int | None = None,
     run_date: date | None = None,
+    scheduled_before: str | None = None,
 ) -> dict[str, int]:
     target_date = run_date or datetime.now(settings.tzinfo).date()
-    scripts = db.list_renderable_scripts(day=target_date.isoformat(), limit=count or settings.batch_render_size)
+    scripts = db.list_renderable_scripts(
+        day=target_date.isoformat(),
+        limit=count or settings.batch_render_size,
+        scheduled_before=scheduled_before,
+    )
     stats = {"renders_succeeded": 0, "provider_failures": 0, "fallback_renders_used": 0}
     recent_scripts = db.recent_scripts(30)
 

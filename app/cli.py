@@ -116,10 +116,10 @@ def setup_status(
     console.print(table)
 
     if report.ready_for_github_automation:
-        console.print("GitHub automation has the required local settings for live publishing.")
+        console.print("GitHub automation has the required settings for live publishing.")
     elif report.ready_for_live_publish:
         console.print(
-            "Live publishing is configured locally. GitHub-hosted automation still needs Turso and public storage such as R2."
+            "Live publishing is configured locally. GitHub-hosted automation still needs Turso state secrets."
         )
     else:
         console.print("Live publishing is not ready yet. Run with DRY_RUN=true until the missing keys are set.")
