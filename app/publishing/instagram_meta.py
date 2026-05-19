@@ -13,10 +13,13 @@ from app.config import Settings
 from app.retry_utils import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from app.utils import ensure_directory, slugify
 
-try:  # pragma: no cover - optional dependency in some test envs.
-    import boto3
-except Exception:  # pragma: no cover
-    boto3 = None
+
+def _load_boto3():
+    try:  # pragma: no cover - optional dependency in some test envs.
+        import boto3
+    except Exception:  # pragma: no cover
+        return None
+    return boto3
 
 
 class InstagramMetaPublisher:
@@ -50,11 +53,12 @@ class InstagramMetaPublisher:
         return f"reels/{staged_name}"
 
     def _r2_client(self):
-        if boto3 is None:
+        boto3_module = _load_boto3()
+        if boto3_module is None:
             raise RuntimeError("boto3 is required for R2 uploads. Install project dependencies first.")
         if not self.settings.use_r2_storage:
             raise RuntimeError("R2 storage is not configured")
-        return boto3.client(
+        return boto3_module.client(
             "s3",
             endpoint_url=self.settings.r2_s3_endpoint,
             aws_access_key_id=self.settings.r2_access_key_id,
@@ -72,10 +76,11 @@ class InstagramMetaPublisher:
         client.delete_object(Bucket=self.settings.r2_bucket, Key=object_key)
 
     def stage_media(self, render_path: Path, slug: str) -> tuple[Path, str, str]:
-        staged_dir = ensure_directory(self.settings.media_staging_dir)
-        staged_path = staged_dir / f"{slugify(slug)}{render_path.suffix}"
+        staged_name = f"{slugify(slug)}{render_path.suffix}"
+        object_key = self._object_key(staged_name)
+        staged_path = ensure_directory(self.settings.media_staging_dir) / object_key
+        ensure_directory(staged_path.parent)
         shutil.copy2(render_path, staged_path)
-        object_key = self._object_key(staged_path.name)
         if self.settings.use_r2_storage and not self.settings.dry_run:
             self._upload_r2_object(staged_path, object_key)
         if not self.settings.public_media_base_url:

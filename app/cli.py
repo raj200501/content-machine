@@ -10,7 +10,6 @@ from rich.console import Console
 from rich.table import Table
 
 from app.config import get_settings
-from app.db import Database
 from app.logging_utils import configure_logging
 from app.scheduler import build_publication_slots
 from app.setup_status import build_setup_report
@@ -20,6 +19,8 @@ console = Console()
 
 
 def _ctx() -> tuple[Database, object]:
+    from app.db import Database
+
     settings = get_settings()
     configure_logging(settings.log_level)
     db = Database(settings.database_runtime_path, settings=settings)
@@ -117,7 +118,9 @@ def setup_status(
     if report.ready_for_github_automation:
         console.print("GitHub automation has the required local settings for live publishing.")
     elif report.ready_for_live_publish:
-        console.print("Live publishing is configured locally; GitHub automation still needs Turso and R2 settings.")
+        console.print(
+            "Live publishing is configured locally. GitHub-hosted automation still needs Turso and public storage such as R2."
+        )
     else:
         console.print("Live publishing is not ready yet. Run with DRY_RUN=true until the missing keys are set.")
 

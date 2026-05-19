@@ -154,11 +154,11 @@ def build_setup_report(settings: Settings, *, check_binaries: bool = True) -> Se
     checks.append(
         SetupCheck(
             "publishing",
-            "R2 media hosting",
-            "ok" if not missing_r2 else "missing",
+            "Unattended media hosting",
+            "ok" if not missing_r2 else "optional",
             "Cloudflare R2 upload settings are configured"
             if not missing_r2
-            else "Missing for unattended GitHub publishing: " + ", ".join(missing_r2),
+            else "Optional for GitHub-hosted publishing; local tunnel mode can skip: " + ", ".join(missing_r2),
             R2_ENV,
         )
     )

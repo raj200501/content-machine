@@ -47,7 +47,7 @@ Optional but useful:
 
 - `piper` for higher-quality local TTS
 - Hugging Face token for provider-first video/image generation
-- Public static hosting for rendered videos when using live Meta publishing
+- Public static hosting or a local public tunnel for rendered videos when using live Meta publishing
 
 ## Install FFmpeg
 
@@ -72,7 +72,7 @@ cp .env.example .env
 ./scripts/bootstrap.sh
 ```
 
-For exact free-only dashboard instructions to finish Instagram, R2, Turso, Hugging Face, and GitHub setup, use [FINISH_REPO.md](/Users/rajkashikar/content-machine/FINISH_REPO.md).
+For exact free-only dashboard instructions to finish Instagram, local media tunneling, optional R2, Turso, Hugging Face, and GitHub setup, use [FINISH_REPO.md](/Users/rajkashikar/content-machine/FINISH_REPO.md).
 
 That script:
 
@@ -177,11 +177,25 @@ This repo uses the official publishing API only. It does not use browser automat
 5. Populate the required Instagram env vars in `.env`.
 6. Set `PUBLIC_MEDIA_BASE_URL` to a public URL where Meta can fetch rendered MP4 files.
 
-Important: Meta publishing requires a publicly reachable `video_url`. The repo stages files into `MEDIA_STAGING_DIR`, but you must host that directory or sync it to public storage you control. This is not a paid hard dependency; it is a platform requirement of the official API.
+Important: Meta publishing requires a publicly reachable `video_url`. The repo stages files into `MEDIA_STAGING_DIR`, but you must host that directory, expose it with a local tunnel, or sync it to public storage you control. This is not a paid hard dependency; it is a platform requirement of the official API.
+
+## Free Local Media Tunnel
+
+For the strict zero-billing path, avoid object storage entirely and expose the local staging directory while a publish runs:
+
+```bash
+./scripts/serve_media_public.sh
+```
+
+The script serves `MEDIA_STAGING_DIR` locally and starts a TryCloudflare quick tunnel with `cloudflared`. When it prints an `https://*.trycloudflare.com` URL, put that value in `PUBLIC_MEDIA_BASE_URL` and keep the terminal open until the live publish finishes.
+
+The publisher stages files under `MEDIA_STAGING_DIR/reels/...`, so a tunnel rooted at `MEDIA_STAGING_DIR` serves the same `/reels/...` URL that Meta receives.
 
 ## Cloudflare R2 Setup
 
 For unattended GitHub-hosted publishing, the easiest storage path is Cloudflare R2.
+
+R2 is optional. It has a free monthly allowance, but it is still a usage-based Cloudflare subscription, so skip it if you want the strict no-billing setup.
 
 1. Create an R2 bucket.
 2. Create S3-compatible access keys for that bucket/account.
@@ -310,11 +324,12 @@ It installs:
 
 ## GitHub Actions
 
-The repo includes a scheduled GitHub Actions workflow at `.github/workflows/automation.yml`.
+The repo includes a GitHub Actions workflow at `.github/workflows/automation.yml`.
 
 Behavior:
 
-- runs every 10 minutes
+- scheduling is disabled by default for the strict free setup
+- can be run manually with `workflow_dispatch`
 - uses `TIMEZONE` to decide when to refresh, plan, render, and publish
 - stays skipped until the required GitHub secrets exist
 - defaults to `POSTS_PER_DAY=5` and `BATCH_RENDER_SIZE=5`

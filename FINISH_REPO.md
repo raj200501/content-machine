@@ -39,7 +39,7 @@ Use the local renderer as the normal video generator. It uses Pillow, ffmpeg, lo
 
 Do not buy Hugging Face credits. Hugging Face gives free users a small monthly Inference Providers credit, but provider video can consume that quickly and paid usage exists after credits are purchased. For a guaranteed free run, leave `HF_TOKEN` blank and keep `ENABLE_VIDEO_PROVIDER=false`.
 
-Use Cloudflare R2 Standard storage only, not Infrequent Access. R2 has a free monthly allowance for Standard storage and operations, but can bill above that allowance. This repo uploads only temporary MP4s for Meta to fetch and then deletes them after publish, which is designed to stay tiny. Keep `DELETE_STAGED_MEDIA_AFTER_PUBLISH=true`.
+Use the local tunnel path for strict zero-billing publishing. It does not create an R2 bucket, R2 subscription, storage key, or usage-based billing surface. Cloudflare R2 Standard storage is still supported for unattended GitHub-hosted publishing, but R2 has a free monthly allowance and can bill above that allowance. Keep `DELETE_STAGED_MEDIA_AFTER_PUBLISH=true`.
 
 Avoid GitHub Actions scheduled automation on a private repo unless you know you are under the included free minutes. GitHub Actions is free for public repos on standard runners, and private repos get a monthly free quota. The safest zero-dollar mode is local cron on your Mac.
 
@@ -172,86 +172,64 @@ Do not buy Meta ads.
 
 If the token expires, return to Graph API Explorer, generate a new token, and replace `INSTAGRAM_ACCESS_TOKEN`.
 
-## Step 3: Public Media URL, Free-Tier R2
+## Step 3: Public Media URL, Strict-Free Local Tunnel
 
-Meta needs a public `video_url` before it can publish a Reel. This repo can upload the temporary MP4 to Cloudflare R2 using S3-compatible credentials.
+Meta needs a public `video_url` before it can publish a Reel. For strict zero-billing local publishing, run a local static server and expose it with a temporary TryCloudflare quick tunnel.
 
-Cloudflare R2 can stay free if you use Standard storage, stay under the monthly free allowance, and delete staged media after publishing.
+This does not require a Cloudflare account, R2 bucket, R2 subscription, or R2 API key. It is for local live publishing while your Mac and the tunnel are running.
 
-### 3.1 Create A Bucket
+### 3.1 Install cloudflared
 
-1. Go to `https://dash.cloudflare.com/`.
-2. Click `Storage & databases`.
-3. Click `R2`.
-4. Click `Create bucket`.
-5. Name it `content-machine-reels`.
-6. Choose `Standard` storage. Do not choose Infrequent Access.
-7. Click `Create bucket`.
-8. Put this into `.env`:
+If `cloudflared` is not installed:
 
-   ```dotenv
-   R2_BUCKET=content-machine-reels
-   ```
+```bash
+brew install cloudflared
+```
 
-### 3.2 Make The Bucket Public For Meta Fetching
+### 3.2 Start The Public Media Tunnel
 
-Use a custom domain if you already own one on Cloudflare. Use the `r2.dev` public development URL only if you are staying free and testing.
+Run this from the repo root:
 
-For `r2.dev`:
+```bash
+./scripts/serve_media_public.sh
+```
 
-1. Open the R2 bucket.
-2. Click `Settings`.
-3. Find `Public Development URL`.
-4. Click `Enable`.
-5. In the confirmation box, type `allow`.
-6. Click `Allow`.
-7. Copy the displayed public bucket URL.
-8. Put it into `.env` as:
+When the terminal prints an `https://*.trycloudflare.com` URL, put it into `.env`:
 
-   ```dotenv
-   PUBLIC_MEDIA_BASE_URL=https://YOUR_PUBLIC_BUCKET_URL
-   ```
+```dotenv
+PUBLIC_MEDIA_BASE_URL=https://YOUR_RANDOM_SUBDOMAIN.trycloudflare.com
+```
 
-For a custom domain:
+Keep this terminal open while running any live publish. If you stop the tunnel and start it again, the URL changes, so update `PUBLIC_MEDIA_BASE_URL`.
 
-1. Open the R2 bucket.
-2. Click `Settings`.
-3. Under `Custom Domains`, click `Add`.
-4. Enter the domain, for example `media.yourdomain.com`.
-5. Click `Continue`.
-6. Review the DNS record.
-7. Click `Connect Domain`.
-8. Wait until the status becomes `Active`.
-9. Put the domain into `.env`:
+Leave these blank for local tunnel mode:
 
-   ```dotenv
-   PUBLIC_MEDIA_BASE_URL=https://media.yourdomain.com
-   ```
+```dotenv
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+R2_ENDPOINT_URL=
+```
 
-### 3.3 Create R2 S3 Credentials
+### 3.3 Optional R2 Mode For Unattended GitHub Publishing
 
-1. Go to Cloudflare Dashboard.
-2. Click `Storage & databases`.
-3. Click `R2`.
-4. Click `Overview`.
-5. Find `API Tokens`.
-6. Click `Manage`.
-7. Click `Create API token`.
-8. Choose `Object Read & Write`.
-9. Choose `Apply to specific buckets only`.
-10. Select `content-machine-reels`.
-11. Click `Create API Token`.
-12. Copy `Access Key ID` into `.env` as `R2_ACCESS_KEY_ID`.
-13. Copy `Secret Access Key` into `.env` as `R2_SECRET_ACCESS_KEY`. You will not be able to view it again.
-14. Copy the account ID from the endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
-15. Put it into `.env`:
+Use this only if you decide the Cloudflare usage-based billing surface is acceptable. R2 can stay free if you use Standard storage, stay under the monthly free allowance, and delete staged media after publishing.
+
+1. Create a bucket named `content-machine-reels`.
+2. Choose `Standard` storage. Do not choose Infrequent Access.
+3. Enable a public bucket URL or custom domain for Meta fetching.
+4. Create S3 credentials scoped to that bucket.
+5. Put the resulting values into `.env`:
 
    ```dotenv
    R2_ACCOUNT_ID=PASTE_ACCOUNT_ID_HERE
+   R2_ACCESS_KEY_ID=PASTE_ACCESS_KEY_ID_HERE
+   R2_SECRET_ACCESS_KEY=PASTE_SECRET_ACCESS_KEY_HERE
+   R2_BUCKET=content-machine-reels
+   PUBLIC_MEDIA_BASE_URL=https://YOUR_PUBLIC_BUCKET_URL
    R2_REGION=auto
    ```
-
-Leave `R2_ENDPOINT_URL` blank unless you need to override the default endpoint.
 
 ## Step 4: Video Generation, Free
 
@@ -353,7 +331,7 @@ To add repository secrets:
 7. Add each secret one at a time.
 8. Click `Add secret`.
 
-Secrets needed by `.github/workflows/automation.yml`:
+Secrets needed by `.github/workflows/automation.yml` for unattended GitHub-hosted publishing:
 
 ```text
 INSTAGRAM_ACCESS_TOKEN
@@ -401,8 +379,9 @@ Then do one live test:
    ```
 
 6. Confirm the Reel posted.
-7. Check Cloudflare R2 bucket contents. It should be empty after publish if cleanup succeeded.
-8. Set `POSTS_PER_DAY=5` and `BATCH_RENDER_SIZE=5` only after the one-post test works.
+7. If you used R2, check the bucket contents. It should be empty after publish if cleanup succeeded.
+8. If you used the local tunnel, keep `./scripts/serve_media_public.sh` running until Meta finishes ingesting the Reel.
+9. Set `POSTS_PER_DAY=5` and `BATCH_RENDER_SIZE=5` only after the one-post test works.
 
 ## Sources Checked
 
@@ -411,6 +390,7 @@ Then do one live test:
 - Cloudflare R2 S3 credentials: https://developers.cloudflare.com/r2/get-started/s3/
 - Cloudflare R2 public buckets: https://developers.cloudflare.com/r2/buckets/public-buckets/
 - Cloudflare R2 pricing and free tier: https://developers.cloudflare.com/r2/pricing/
+- Cloudflare TryCloudflare quick tunnels: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/
 - Turso CLI authentication: https://docs.turso.tech/cli/authentication
 - Turso database tokens: https://docs.turso.tech/cli/db/tokens/create
 - Turso pricing: https://turso.tech/pricing

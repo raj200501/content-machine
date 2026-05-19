@@ -26,7 +26,7 @@ def test_instagram_meta_publish_flow(monkeypatch, tmp_path: Path) -> None:
         assets_dir=tmp_path / "assets",
         database_path=tmp_path / "db.sqlite",
         media_staging_dir=tmp_path / "output" / "published" / "staged",
-        public_media_base_url="https://cdn.example.com/reels",
+        public_media_base_url="https://cdn.example.com",
         turso_database_url="",
         turso_auth_token="",
     )
@@ -53,6 +53,7 @@ def test_instagram_meta_publish_flow(monkeypatch, tmp_path: Path) -> None:
     assert result["creation_id"] == "creation_1"
     assert result["instagram_media_id"] == "media_1"
     assert len(calls) == 3
+    assert calls[0][2]["data"]["video_url"] == "https://cdn.example.com/reels/sample-reel.mp4"
 
 
 def test_instagram_meta_r2_stage_and_cleanup(monkeypatch, tmp_path: Path) -> None:
@@ -83,8 +84,8 @@ def test_instagram_meta_r2_stage_and_cleanup(monkeypatch, tmp_path: Path) -> Non
     settings.ensure_directories()
     publisher = InstagramMetaPublisher(settings)
     monkeypatch.setattr(
-        "app.publishing.instagram_meta.boto3",
-        SimpleNamespace(client=lambda *args, **kwargs: DummyS3Client()),
+        "app.publishing.instagram_meta._load_boto3",
+        lambda: SimpleNamespace(client=lambda *args, **kwargs: DummyS3Client()),
     )
 
     render_path = tmp_path / "sample.mp4"
@@ -92,9 +93,12 @@ def test_instagram_meta_r2_stage_and_cleanup(monkeypatch, tmp_path: Path) -> Non
 
     staged_path, media_url, object_key = publisher.stage_media(render_path, "Sample Reel")
     assert staged_path.exists()
+    assert staged_path == settings.media_staging_dir / "reels" / "sample-reel.mp4"
     assert media_url == "https://media.example.com/reels/sample-reel.mp4"
     assert object_key == "reels/sample-reel.mp4"
-    assert uploaded and uploaded[0][1] == "careerstacked-media"
+    assert uploaded and uploaded[0][0] == str(staged_path)
+    assert uploaded[0][1] == "careerstacked-media"
+    assert uploaded[0][2] == "reels/sample-reel.mp4"
 
     publisher.cleanup_staged_media(staged_path, object_key)
     assert not staged_path.exists()
