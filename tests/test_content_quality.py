@@ -121,7 +121,7 @@ def test_job_alert_speaks_posted_pay_and_guard_keeps_it() -> None:
     items[0]["metadata_json"] = json.dumps(meta)
     items[0]["text_content"] = items[0].get("text_content", "") + " Pay range: $47–$58/hr."
     package = build_script(topic, items)
-    assert "The posting lists $47–$58/hr." in package.full_script
+    assert "in San Francisco, listed at $47–$58/hr." in package.full_script
     assert package.metadata["scenes"][1]["pay"] == "$47–$58/hr"
     assert "$47–$58/hr (listed)" in package.caption.caption
     guarded = guard_script(package.full_script, items)

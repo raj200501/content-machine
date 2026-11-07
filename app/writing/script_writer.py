@@ -123,10 +123,10 @@ def _job_line(details: dict) -> str:
     where = f" in {details['location']}" if details["location"] else ""
     who = f", {details['audience']}" if details["audience"] else ""
     line = f"{details['company']}: {details['title']}{where}{who}"
-    line = line if line.endswith(".") else line + "."
     if details["pay"]:
         # Written compactly for the screen; the voice layer says "47 to 58 dollars an hour".
-        line += f" The posting lists {details['pay']}."
+        line = line.rstrip(".") + f", listed at {details['pay']}"
+    line = line if line.endswith(".") else line + "."
     return line
 
 

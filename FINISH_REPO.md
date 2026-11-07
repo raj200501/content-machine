@@ -1,5 +1,7 @@
 # Finish Content Machine (Free-Only)
 
+For what the account posts and why (research, formats, what to do by hand), see [GROWTH_PLAYBOOK.md](GROWTH_PLAYBOOK.md).
+
 Last checked: November 7, 2026.
 
 The code is finished. Sources, scripts, voiceover, rendering, the publish

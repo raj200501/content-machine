@@ -28,8 +28,8 @@ CATEGORY_CTAS = {
 }
 
 JOB_ALERT_CTAS = [
-    "Send this to a friend who's applying, and follow for tomorrow's drop.",
-    "Send this to the friend who still needs an internship. New roles drop here daily.",
+    "Send this to a friend who's applying. New roles daily.",
+    "Send this to a friend who still needs an internship.",
     "Send this to your group chat before these fill up.",
 ]
 
