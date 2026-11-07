@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import shutil
 import time
 from pathlib import Path
@@ -22,6 +24,9 @@ def _load_boto3():
     return boto3
 
 
+LOG = logging.getLogger(__name__)
+
+
 class MetaAPIError(RuntimeError):
     """A non-retryable 4xx response from the Graph API."""
 
@@ -33,6 +38,7 @@ class InstagramMetaPublisher:
         self.settings = settings
         self.session = requests.Session()
         self._publish_credentials: tuple[str, str] | None = None
+        self._followers: int | None = None
 
     def publish_credentials(self) -> tuple[str, str]:
         """Return (access_token, ig_user_id) to publish with.
@@ -187,19 +193,61 @@ class InstagramMetaPublisher:
         if self.settings.delete_staged_media_after_publish and staged_path.exists():
             staged_path.unlink(missing_ok=True)
 
-    def create_media_container(self, video_url: str, caption: str, thumb_offset_ms: int | None = None) -> str:
+    def followers_count(self) -> int | None:
+        """Current follower count (used to decide when Trial Reels are available)."""
+
+        if self._followers is not None:
+            return self._followers
+        try:
+            token, ig_user_id = self.publish_credentials()
+            data = self._request("GET", ig_user_id, params={"fields": "followers_count", "access_token": token})
+            self._followers = int(data.get("followers_count", 0))
+        except Exception as exc:
+            LOG.warning("Could not read follower count: %s", exc)
+            self._followers = None
+        return self._followers
+
+    def use_trial_reel(self, category: str | None) -> bool:
+        if self.settings.trial_reels != "auto" or not category:
+            return False
+        if category not in {c.strip() for c in self.settings.trial_reel_categories.split(",") if c.strip()}:
+            return False
+        followers = self.followers_count()
+        return followers is not None and followers >= self.settings.trial_reels_min_followers
+
+    def create_media_container(
+        self,
+        video_url: str,
+        caption: str,
+        thumb_offset_ms: int | None = None,
+        trial: bool = False,
+    ) -> str:
         payload = {
             "media_type": "REELS",
             "video_url": video_url,
             "caption": caption,
             "share_to_feed": "true",
         }
+        optional: dict[str, str] = {}
         if thumb_offset_ms is not None:
             # Cover frame: the moment the hook is fully on screen.
-            payload["thumb_offset"] = str(int(thumb_offset_ms))
+            optional["thumb_offset"] = str(int(thumb_offset_ms))
+        if self.settings.label_ai_generated:
+            # The voice is synthetic; Meta asks for realistic synthetic audio to be disclosed.
+            optional["is_ai_generated"] = "true"
+        if trial:
+            # Shown to non-followers first; shared to followers automatically if it performs.
+            optional["trial_params"] = json.dumps({"graduation_strategy": "SS_PERFORMANCE"})
         token, ig_user_id = self.publish_credentials()
-        payload["access_token"] = token
-        data = self._request("POST", f"{ig_user_id}/media", data=payload)
+        try:
+            data = self._request("POST", f"{ig_user_id}/media", data={**payload, **optional, "access_token": token})
+        except MetaAPIError as exc:
+            if not optional or " 190" in str(exc):
+                raise
+            # An optional field was rejected (or the account is not eligible for
+            # it); never let that block the post.
+            LOG.warning("Container rejected with optional fields %s (%s); retrying without them", sorted(optional), exc)
+            data = self._request("POST", f"{ig_user_id}/media", data={**payload, "access_token": token})
         return str(data["id"])
 
     def connected_instagram_accounts(self) -> list[dict[str, str]]:
@@ -265,7 +313,62 @@ class InstagramMetaPublisher:
         )
         return str(data["id"])
 
-    def publish_reel(self, render_path: Path, caption: str, slug: str, thumb_offset_ms: int | None = None) -> dict:
+    def publish_carousel(self, slide_paths: list[Path], caption: str, slug: str) -> dict:
+        """Publish an image carousel (2-10 JPEG slides)."""
+
+        staged = [self.stage_media(path, f"{slug}-{index:02d}") for index, path in enumerate(slide_paths, start=1)]
+        if self.settings.dry_run:
+            return {
+                "mode": "dry_run",
+                "format": "carousel",
+                "media_url": staged[0][1] if staged else "",
+                "storage_key": staged[0][2] if staged else "",
+                "creation_id": f"dryrun_carousel_{slugify(slug)}",
+                "instagram_media_id": f"dryrun_media_{slugify(slug)}",
+            }
+        token, ig_user_id = self.publish_credentials()
+        children = []
+        for _path, url, _key in staged:
+            data = self._request(
+                "POST",
+                f"{ig_user_id}/media",
+                data={"image_url": url, "is_carousel_item": "true", "access_token": token},
+            )
+            children.append(str(data["id"]))
+        for child in children:
+            self.poll_until_ready(child, timeout_seconds=180, interval_seconds=3)
+        data = self._request(
+            "POST",
+            f"{ig_user_id}/media",
+            data={"media_type": "CAROUSEL", "children": ",".join(children), "caption": caption, "access_token": token},
+        )
+        creation_id = str(data["id"])
+        container_status = self.poll_until_ready(creation_id, timeout_seconds=300, interval_seconds=5)
+        media_id = self.publish_container(creation_id)
+        result = {
+            "mode": "live",
+            "format": "carousel",
+            "media_url": staged[0][1],
+            "storage_key": staged[0][2],
+            "creation_id": creation_id,
+            "container_status": container_status,
+            "instagram_media_id": media_id,
+        }
+        for staged_path, _url, object_key in staged:
+            try:
+                self.cleanup_staged_media(staged_path, object_key)
+            except Exception as exc:  # pragma: no cover
+                result["cleanup_error"] = str(exc)
+        return result
+
+    def publish_reel(
+        self,
+        render_path: Path,
+        caption: str,
+        slug: str,
+        thumb_offset_ms: int | None = None,
+        category: str | None = None,
+    ) -> dict:
         staged_path, media_url, object_key = self.stage_media(render_path, slug)
         if self.settings.dry_run:
             return {
@@ -277,7 +380,8 @@ class InstagramMetaPublisher:
                 "instagram_media_id": f"dryrun_media_{slugify(slug)}",
             }
 
-        creation_id = self.create_media_container(media_url, caption, thumb_offset_ms)
+        trial = self.use_trial_reel(category)
+        creation_id = self.create_media_container(media_url, caption, thumb_offset_ms, trial=trial)
         container_status = self.poll_until_ready(creation_id)
         media_id = self.publish_container(creation_id)
         result = {
@@ -287,6 +391,7 @@ class InstagramMetaPublisher:
             "storage_key": object_key,
             "creation_id": creation_id,
             "container_status": container_status,
+            "trial_reel": trial,
             "instagram_media_id": media_id,
         }
         try:

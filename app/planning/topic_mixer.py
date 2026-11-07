@@ -46,7 +46,9 @@ def _job_groups(source_items: list[dict], company_counts: Counter[str] | None = 
         key=lambda item: (
             # Most followers are undergrads; PhD-only roles go last.
             bool(re.search(r"\bph\.?d\b", item["title"], re.I)),
-            # Postings that list pay make far more useful (and shareable) reels.
+            # Postings from the last two weeks first (freshness_score >= 55)...
+            item["freshness_score"] < 55,
+            # ...then the ones that list pay, which make far more useful reels.
             not (json_loads(item.get("metadata_json"), default={}) or {}).get("pay"),
             -item["freshness_score"],
             company_counts[item_company(item).lower()],
@@ -75,6 +77,62 @@ def _job_groups(source_items: list[dict], company_counts: Counter[str] | None = 
     return groups
 
 
+ROUNDUP_WEEKDAY = 6  # Sunday: a save-worthy carousel of the week's best roles
+ROUNDUP_SIZE = 8
+
+
+def _roundup_items(source_items: list[dict], exclude_ids: set[int]) -> list[dict]:
+    jobs = [item for item in source_items if item["source_type"] == "job_board"]
+    jobs.sort(
+        key=lambda item: (
+            item["id"] in exclude_ids,  # prefer roles not already in today's reels
+            bool(re.search(r"\bph\.?d\b", item["title"], re.I)),
+            not (json_loads(item.get("metadata_json"), default={}) or {}).get("pay"),
+            -item["freshness_score"],
+        )
+    )
+    picked: list[dict] = []
+    seen: set[str] = set()
+    for item in jobs:
+        company = item_company(item).lower()
+        if company in seen:
+            continue
+        seen.add(company)
+        picked.append(item)
+        if len(picked) >= ROUNDUP_SIZE:
+            break
+    return picked
+
+
+def _with_weekly_roundup(run_date: date, topics: list[PlannedTopic], source_items: list[dict]) -> list[PlannedTopic]:
+    if run_date.weekday() != ROUNDUP_WEEKDAY or len(topics) < 3:
+        return topics
+    used = {item_id for topic in topics if topic.category == "openings_job_alert" for item_id in topic.source_item_ids}
+    items = _roundup_items(source_items, used)
+    if len(items) < 5:
+        return topics
+    target = next((i for i, t in enumerate(topics) if t.category == "application_strategy"), None)
+    if target is None:
+        target = next((i for i, t in enumerate(topics) if t.category != "openings_job_alert"), None)
+    if target is None:
+        return topics
+    old = topics[target]
+    topics[target] = PlannedTopic(
+        day=old.day,
+        slot_index=old.slot_index,
+        scheduled_at=old.scheduled_at,
+        category="jobs_roundup",
+        hook_style="weekly roundup",
+        title="Weekly roundup: " + ", ".join(item_company(item) for item in items[:3]),
+        angle="Carousel of open early-career roles from different companies.",
+        company=item_company(items[0]),
+        source_item_ids=[item["id"] for item in items],
+        freshness_score=sum(item["freshness_score"] for item in items) / len(items),
+        metadata={"kind": "roundup", "items": [item_company(item) for item in items]},
+    )
+    return topics
+
+
 def _items_by_theme(source_items: list[dict]) -> dict[str, list[dict]]:
     themed = defaultdict(list)
     for item in source_items:
@@ -97,6 +155,7 @@ def build_daily_topics(
     schedule_slots: list[str],
     source_items: list[dict],
     recent_scripts: list[dict],
+    category_multipliers: dict[str, float] | None = None,
 ) -> list[PlannedTopic]:
     """Build 20 diversified daily content slots."""
 
@@ -119,10 +178,10 @@ def build_daily_topics(
     topics: list[PlannedTopic] = []
     slot_index = 0
 
-    for category, quota in scaled_daily_buckets(len(schedule_slots)).items():
+    for category, quota in scaled_daily_buckets(len(schedule_slots), category_multipliers).items():
         for _ in range(quota):
             if slot_index >= len(schedule_slots):
-                return topics
+                return _with_weekly_roundup(run_date, topics, source_items)
             hook_style = _select_hook(category, hook_counts)
             company = ""
             source_item_ids: list[int] = []
@@ -184,4 +243,4 @@ def build_daily_topics(
             )
             slot_index += 1
 
-    return topics[: len(schedule_slots)]
+    return _with_weekly_roundup(run_date, topics, source_items)[: len(schedule_slots)]

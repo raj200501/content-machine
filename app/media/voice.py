@@ -25,6 +25,8 @@ from app.config import Settings
 from app.utils import ensure_directory
 
 LOG = logging.getLogger(__name__)
+# The phonemizer warns on harmless word-count mismatches for every line.
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
 SAMPLE_RATE = 24000
 SILENCE_THRESHOLD = 0.012
@@ -88,6 +90,11 @@ _MONEY_RANGE = re.compile(
 _MONEY_SINGLE = re.compile(r"([$£€])(\d[\d,]*(?:\.\d+)?)([kK])?(/hr|/mo|/yr)?")
 
 
+def _amount(value: str) -> str:
+    whole, _, cents = value.partition(".")
+    return whole if not cents or int(cents) == 0 else f"{whole} dollars and {int(cents)} cents"
+
+
 def _say_money(text: str) -> str:
     """'$47–$58/hr' -> '47 to 58 dollars an hour' (TTS reads '$47' as 'dollar 47')."""
 
@@ -99,7 +106,10 @@ def _say_money(text: str) -> str:
     def single(match: re.Match) -> str:
         thousand = " thousand" if match.group(3) else ""
         unit = _UNIT_WORDS.get(match.group(4) or "", "")
-        return f"{match.group(2)}{thousand} {_CURRENCY_WORDS[match.group(1)]}{unit}"
+        amount = match.group(2)
+        if "." in amount and not thousand and match.group(1) == "$":
+            return f"{_amount(amount)}{unit}"
+        return f"{amount}{thousand} {_CURRENCY_WORDS[match.group(1)]}{unit}"
 
     return _MONEY_SINGLE.sub(single, _MONEY_RANGE.sub(ranged, text))
 

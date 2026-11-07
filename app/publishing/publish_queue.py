@@ -62,13 +62,22 @@ def publish_due_jobs(
                 continue
             render_meta = json_loads(job.get("render_metadata_json"), default={}) or {}
             nested = render_meta.get("metadata") if isinstance(render_meta.get("metadata"), dict) else {}
+            render_meta = {**render_meta, **nested}
             thumb_offset = render_meta.get("thumb_offset_ms") or nested.get("thumb_offset_ms")
-            result = publisher.publish_reel(
-                render_path,
-                job["caption"],
-                f"{job['script_id']}-{job['hook']}",
-                thumb_offset_ms=int(thumb_offset) if thumb_offset else None,
-            )
+            if render_meta.get("format") == "carousel":
+                result = publisher.publish_carousel(
+                    [Path(path) for path in render_meta.get("slides", [])],
+                    job["caption"],
+                    f"{job['script_id']}-{job['hook']}",
+                )
+            else:
+                result = publisher.publish_reel(
+                    render_path,
+                    job["caption"],
+                    f"{job['script_id']}-{job['hook']}",
+                    thumb_offset_ms=int(thumb_offset) if thumb_offset else None,
+                    category=job.get("category"),
+                )
             db.update_publish_job(
                 job["id"],
                 status="published",

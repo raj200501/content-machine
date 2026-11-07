@@ -9,7 +9,7 @@ from app.media.audio_tts import synthesize_audio
 from app.media.compositor import compose_with_background_video
 from app.media.hf_provider import HFProvider
 from app.media.local_reel_builder import LocalFallbackReelBuilder
-from app.media.reel_renderer import render_reel
+from app.media.reel_renderer import render_carousel, render_reel
 from app.media.subtitles import write_srt
 from app.models import RenderArtifact
 from app.utils import ensure_directory, hash_text, slugify
@@ -36,6 +36,8 @@ def render_with_fallback(settings: Settings, script_row: dict, output_root: Path
     """Try provider-generated visuals first, then fall back to the local reel builder."""
 
     ensure_directory(output_root)
+    if (script_row.get("category") or "") == "jobs_roundup":
+        return render_carousel(settings, script_row, output_root)
     slug = slugify(f"{script_row['id']}-{hash_text(script_row['hook'])[:8]}")
     provider_error = None
 

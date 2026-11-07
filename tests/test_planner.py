@@ -49,7 +49,9 @@ def test_daily_topic_mix_respects_quota(tmp_path: Path) -> None:
 
     assert len(topics) == 20
     assert counts["openings_job_alert"] == 6
-    assert counts["application_strategy"] == 4
+    # 2026-04-19 is a Sunday: the weekly carousel roundup takes one application slot.
+    assert counts["jobs_roundup"] == 1
+    assert counts["application_strategy"] == 3
     assert counts["interview_prep"] == 4
     assert counts["resume_portfolio"] == 3
     assert counts["market_context"] == 2

@@ -21,6 +21,15 @@ def validate_render(
     recent_scripts: list[dict],
 ) -> QualityReport:
     issues: list[str] = []
+    if artifact.metadata.get("format") == "carousel":
+        slides = [path for path in artifact.metadata.get("slides", [])]
+        from pathlib import Path as _Path
+
+        if not 3 <= len(slides) <= 10 or not all(_Path(path).exists() for path in slides):
+            issues.append("carousel needs 3-10 rendered slides")
+        if len(script_row["caption"]) > 2200:
+            issues.append("caption is too long for Instagram")
+        return QualityReport(passed=not issues, issues=issues)
     if not artifact.video_path.exists():
         issues.append("rendered MP4 is missing")
     if not artifact.audio_path.exists():

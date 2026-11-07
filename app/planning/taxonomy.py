@@ -17,18 +17,24 @@ DAILY_BUCKETS = OrderedDict(
 )
 
 
-def scaled_daily_buckets(posts_per_day: int) -> OrderedDict[str, int]:
-    """Scale the default 20-post mix to any positive daily target."""
+def scaled_daily_buckets(posts_per_day: int, multipliers: dict[str, float] | None = None) -> OrderedDict[str, int]:
+    """Scale the default 20-post mix to any positive daily target.
+
+    ``multipliers`` (from measured performance) nudge category weights up or down.
+    """
 
     if posts_per_day <= 0:
         raise ValueError("posts_per_day must be positive")
 
-    total_weight = sum(DAILY_BUCKETS.values())
+    weights = OrderedDict(
+        (category, weight * (multipliers or {}).get(category, 1.0)) for category, weight in DAILY_BUCKETS.items()
+    )
+    total_weight = sum(weights.values())
     scaled = OrderedDict((category, 0) for category in DAILY_BUCKETS)
-    remainders: list[tuple[float, int, str]] = []
+    remainders: list[tuple[float, float, str]] = []
     assigned = 0
 
-    for category, weight in DAILY_BUCKETS.items():
+    for category, weight in weights.items():
         exact = posts_per_day * weight / total_weight
         whole = math.floor(exact)
         scaled[category] = whole

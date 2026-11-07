@@ -8,6 +8,7 @@ from app.config import Settings
 from app.db import Database
 from app.planning.calendar import day_schedule
 from app.planning.topic_mixer import build_daily_topics
+from app.publishing.insights import category_weights
 from app.writing.fact_guard import guard_script
 from app.writing.script_writer import build_script
 
@@ -20,7 +21,8 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
     source_items = db.recent_source_items(days=30, limit=600)
     recent_scripts = db.recent_scripts(days=30)
     slots = day_schedule(target_date, settings)
-    topics = build_daily_topics(target_date, slots, source_items, recent_scripts)
+    multipliers = category_weights(db)
+    topics = build_daily_topics(target_date, slots, source_items, recent_scripts, multipliers)
 
     recent_hooks = {script["hook"] for script in recent_scripts}
     created = 0

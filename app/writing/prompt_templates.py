@@ -10,6 +10,23 @@ SCRIPT_CTAS = [
     "Follow for one fix like this every day.",
 ]
 
+CATEGORY_CTAS = {
+    "application_strategy": [
+        "Send this to a friend who's recruiting right now.",
+        "Save this for your next application, and send it to a friend who needs it.",
+    ],
+    "interview_prep": [
+        "Save this before your next interview.",
+        "Send this to the friend with an interview this week.",
+    ],
+    "resume_portfolio": [
+        "Save this for your next resume edit, and send it to a friend who needs it.",
+        "Send this to a friend still fixing their resume.",
+    ],
+    "market_context": ["Send this to a friend who's recruiting right now."],
+    "motivational_community": ["Send this to a friend who needs it today."],
+}
+
 JOB_ALERT_CTAS = [
     "Send this to a friend who's applying, and follow for tomorrow's drop.",
     "Send this to the friend who still needs an internship. New roles drop here daily.",

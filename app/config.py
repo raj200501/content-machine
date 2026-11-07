@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     music_bed: bool = True
     music_bed_volume_db: float = -24.0
     render_fps: int = 30
+    # Disclose the synthetic voice (Meta's AI-content labeling policy).
+    label_ai_generated: bool = True
+    # Trial Reels (non-followers first) unlock around 200 followers on professional accounts.
+    trial_reels: str = "auto"  # auto | off
+    trial_reels_min_followers: int = 200
+    trial_reel_categories: str = "interview_prep,application_strategy"
     renderer: str = "motion"  # motion (frame-by-frame) | cards (old still cards)
 
     piper_model_path: str = ""

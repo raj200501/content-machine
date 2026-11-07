@@ -9,7 +9,7 @@ from itertools import cycle
 from app.models import CaptionPackage, PlannedTopic, ScriptPackage
 from app.utils import json_loads
 from app.writing.caption_writer import build_caption
-from app.writing.prompt_templates import CATEGORY_SUBS, JOB_ALERT_CTAS, JOB_ALERT_TIPS, SCRIPT_CTAS
+from app.writing.prompt_templates import CATEGORY_CTAS, CATEGORY_SUBS, JOB_ALERT_CTAS, JOB_ALERT_TIPS, SCRIPT_CTAS
 from app.writing.script_packs import pick_pack
 
 CTA_CYCLE = cycle(SCRIPT_CTAS)
@@ -77,6 +77,8 @@ def spoken_job_title(title: str) -> tuple[str, str]:
 def spoken_location(location: str) -> str:
     if not location:
         return ""
+    if re.match(r"^\s*remote\b", location, re.I):
+        return "Remote"
     if re.match(r"^\s*washington,?\s*d\.?\s?c\.?", location, re.I):
         return "Washington, D.C."
     first = re.split(r"\s+or\s+|\s+and\s+\d+\s+more|•|;|/", location)[0]
@@ -185,6 +187,26 @@ def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int
     return hook, beats, scenes
 
 
+def _roundup(topic: PlannedTopic, evidence_items: list[dict]) -> tuple[str, list[str], list[dict]]:
+    jobs = [_job_details(item, topic.day) for item in evidence_items[:8]]
+    _audience, roles = _audience_word(jobs)
+    hook = f"{len(jobs)} tech {roles} open right now. Save this."
+    lines = []
+    scenes = [{"kind": "roundup_cover", "companies": [job["company"] for job in jobs], "roles": roles}]
+    for job in jobs:
+        parts = [job["title"]]
+        if job["location"]:
+            parts.append(job["location"])
+        if job["pay"]:
+            parts.append(job["pay"])
+        lines.append(f"{job['company']}: " + " · ".join(parts))
+        scenes.append(
+            {"kind": "job", "company": job["company"], "role": job["role"], "location": job["location"],
+             "pay": job["pay"], "posted_days": job["posted_days"]}
+        )
+    return hook, lines, scenes
+
+
 def _market_from_headline(topic: PlannedTopic, evidence_items: list[dict]) -> tuple[str, list[str]] | None:
     if not evidence_items:
         return None
@@ -216,6 +238,26 @@ def build_script(
     hook = ""
     beats: list[str] = []
     scenes: list[dict] = []
+    if topic.category == "jobs_roundup" and evidence_items:
+        hook, beats, scenes = _roundup(topic, evidence_items)
+        cta = "Save this, then send it to a friend who's applying."
+        scenes.append({"kind": "cta"})
+        full_script = "\n".join([hook, *beats, cta])
+        caption = build_caption(topic, hook, beats, evidence_items, cta)
+        return ScriptPackage(
+            topic=topic,
+            hook=hook,
+            beats=beats,
+            cta=cta,
+            full_script=full_script,
+            caption=caption,
+            evidence=[
+                {"title": item.get("title", ""), "source_url": item.get("source_url", ""),
+                 "summary": item.get("summary", ""), "company": _company(item)}
+                for item in evidence_items
+            ],
+            metadata={"word_count": len(full_script.split()), "scenes": scenes, "format": "carousel"},
+        )
     if topic.category == "openings_job_alert" and evidence_items:
         hook, beats, scenes = _job_alert(topic, evidence_items, day_ordinal)
         cta = JOB_ALERT_CTAS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_CTAS)]
@@ -234,6 +276,9 @@ def build_script(
             hook = topic.hook_style[:1].upper() + topic.hook_style[1:] + "."
             beats = [topic.angle or "Pick one small, concrete step and do it today."]
 
+    if topic.category in CATEGORY_CTAS and topic.category != "openings_job_alert":
+        options = CATEGORY_CTAS[topic.category]
+        cta = options[(day_ordinal + topic.slot_index) % len(options)]
     if not scenes:
         scenes = [{"kind": "hook", "sub": CATEGORY_SUBS.get(topic.category, "")}]
         scenes += [{"kind": "point"} for _ in beats[:4]]

@@ -80,7 +80,7 @@ def test_job_alert_script_names_company_role_and_city() -> None:
     assert "Stripe: Software Engineer Intern in San Francisco." in package.full_script
     assert "Figma: Data Engineer Intern in New York." in package.full_script
     assert all(name in package.hook for name in ("Stripe", "Figma", "Lyft"))  # hook names the companies
-    assert len(package.caption.hashtags) <= 5
+    assert len(package.caption.hashtags) <= 3
     assert "Stripe" in package.caption.caption.splitlines()[0]  # keyword-rich first line
     assert "has a public posting" not in package.full_script
     assert 35 <= len(package.full_script.split()) <= 80

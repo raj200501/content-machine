@@ -6,6 +6,7 @@ from datetime import datetime, time
 
 from app.config import Settings
 from app.db import Database
+from app.publishing.insights import collect_insights
 from app.workflows.plan_day import run_plan_day
 from app.workflows.publish_batch import run_publish_batch
 from app.workflows.refresh_sources import run_refresh_sources
@@ -33,6 +34,13 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
     if db.count_scripts_for_day(metric_date) < settings.posts_per_day and _time_reached(current, time(0, 45)):
         results["plan"] = run_plan_day(db, settings, run_date=current.date())
         metrics = _metric_map(db, metric_date)
+
+    if settings.publish_ready and not settings.dry_run and "insights_collected" not in metrics and _time_reached(current, time(7, 30)):
+        try:
+            results["insights"] = collect_insights(db, settings)
+        except Exception as exc:  # insights must never block posting
+            results["insights"] = {"error": str(exc)[:200]}
+        db.set_metric(metric_date, "insights_collected", float(results["insights"].get("updated", 0)))
 
     render_due_only = settings.publish_ready and not settings.dry_run
     publish_now = settings.publish_now_count if render_due_only else 0

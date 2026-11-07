@@ -7,17 +7,19 @@ import re
 from app.models import CaptionPackage, PlannedTopic
 from app.utils import json_loads
 
-# Instagram now caps posts at a handful of hashtags and ranks mostly on content,
-# captions and on-screen text, so a few specific tags beat a long list.
-MAX_HASHTAGS = 5
+# Instagram is rolling out a 5-hashtag cap (Dec 2025), posts with hashtags do
+# not out-perform, and ranking leans on the content and caption keywords, so a
+# few specific tags is the safe ceiling.
+MAX_HASHTAGS = 3
 
 CATEGORY_HASHTAGS = {
-    "openings_job_alert": ["techinternships", "softwareengineering", "csstudents", "internships", "newgrad"],
-    "application_strategy": ["internshipsearch", "csstudents", "jobsearchtips", "techcareers", "newgrad"],
-    "interview_prep": ["codinginterview", "csstudents", "leetcode", "techinterview", "softwareengineering"],
-    "resume_portfolio": ["resumetips", "csstudents", "techresume", "internshipsearch", "newgrad"],
-    "market_context": ["techjobs", "csstudents", "techcareers", "newgrad", "internships"],
-    "motivational_community": ["csstudents", "techcareers", "internshipsearch", "newgrad", "studentlife"],
+    "openings_job_alert": ["techinternships", "csstudents", "newgrad"],
+    "jobs_roundup": ["techinternships", "csstudents", "newgrad"],
+    "application_strategy": ["internshipsearch", "csstudents", "techcareers"],
+    "interview_prep": ["codinginterview", "csstudents", "leetcode"],
+    "resume_portfolio": ["resumetips", "csstudents", "techresume"],
+    "market_context": ["techjobs", "csstudents", "techcareers"],
+    "motivational_community": ["csstudents", "techcareers", "internshipsearch"],
 }
 
 # One keyword-rich first line per category (Instagram search reads captions).
@@ -30,6 +32,7 @@ CATEGORY_LEADS = {
 }
 
 QUESTIONS = {
+    "jobs_roundup": ["Which of these are you applying to first?", "Which company should make next week's list?"],
     "openings_job_alert": [
         "Which one are you applying to?",
         "Which company should we cover next?",
@@ -68,13 +71,18 @@ def build_caption(
     questions = QUESTIONS.get(topic.category, ["What should the next one cover?"])
     question = questions[topic.slot_index % len(questions)]
 
-    if topic.category == "openings_job_alert" and jobs:
+    if topic.category in {"openings_job_alert", "jobs_roundup"} and jobs:
         names = [name for name in companies if name]
         lead = "Tech internships and new grad roles open now"
+        if topic.category == "jobs_roundup":
+            lead = f"{len(jobs)} tech internships and new grad roles open this week"
+            names = names[:3]
         if names:
             lead += " at " + (", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0])
+            if topic.category == "jobs_roundup":
+                lead = lead.replace(" and " + names[-1], ", " + names[-1]) + " and more"
         lines = [lead, ""]
-        for item in jobs[:3]:
+        for item in jobs[: 8 if topic.category == "jobs_roundup" else 3]:
             metadata = _metadata(item)
             parts = [metadata.get("job_title") or item.get("title", "")]
             if metadata.get("location"):
@@ -82,6 +90,8 @@ def build_caption(
             if metadata.get("pay"):
                 parts.append(f"{metadata['pay']} (listed)")
             lines.append(f"• {metadata.get('company', '')}: " + " · ".join(parts))
+        if topic.category == "jobs_roundup":
+            lines.insert(1, "Save this so you can apply later. Swipe for pay and locations.")
         lines += [
             "",
             "How to apply: search the exact title on each company's careers page. Postings close fast, so check it's still open.",

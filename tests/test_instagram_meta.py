@@ -265,3 +265,50 @@ def test_publish_resolves_page_token_from_user_token(monkeypatch, tmp_path: Path
     for method, _, kwargs in publish_calls:
         sent = kwargs.get("data") or kwargs.get("params")
         assert sent["access_token"] == "page_token"
+
+
+def _live_settings(tmp_path: Path, **extra) -> Settings:
+    return Settings(
+        dry_run=False,
+        instagram_access_token="page_token",
+        instagram_ig_user_id="ig_1",
+        output_dir=tmp_path / "output",
+        assets_dir=tmp_path / "assets",
+        database_path=tmp_path / "db.sqlite",
+        media_staging_dir=tmp_path / "output" / "published" / "staged",
+        public_media_base_url="https://cdn.example.com",
+        turso_database_url="",
+        turso_auth_token="",
+        **extra,
+    )
+
+
+def test_rejected_optional_fields_never_block_the_post(monkeypatch, tmp_path: Path) -> None:
+    publisher = InstagramMetaPublisher(_live_settings(tmp_path))
+    sent = []
+
+    class ErrorResponse(DummyResponse):
+        def __init__(self) -> None:
+            super().__init__({"error": {"type": "OAuthException", "code": 100, "message": "Invalid parameter"}})
+            self.status_code = 400
+
+    def fake_request(method: str, url: str, timeout: int, **kwargs):
+        data = kwargs.get("data") or {}
+        sent.append(dict(data))
+        if "is_ai_generated" in data or "thumb_offset" in data:
+            return ErrorResponse()
+        return DummyResponse({"id": "creation_9"})
+
+    monkeypatch.setattr(publisher.session, "request", fake_request)
+    assert publisher.create_media_container("https://cdn.example.com/v.mp4", "caption", thumb_offset_ms=3000) == "creation_9"
+    assert "is_ai_generated" in sent[0] and sent[0]["thumb_offset"] == "3000"
+    assert "is_ai_generated" not in sent[-1] and sent[-1]["media_type"] == "REELS"
+
+
+def test_trial_reels_wait_for_follower_threshold(monkeypatch, tmp_path: Path) -> None:
+    publisher = InstagramMetaPublisher(_live_settings(tmp_path))
+    monkeypatch.setattr(publisher.session, "request", lambda method, url, timeout, **kw: DummyResponse({"followers_count": 40}))
+    assert publisher.use_trial_reel("interview_prep") is False
+    publisher._followers = 450
+    assert publisher.use_trial_reel("interview_prep") is True
+    assert publisher.use_trial_reel("openings_job_alert") is False  # job alerts always go to followers too

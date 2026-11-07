@@ -162,6 +162,22 @@ CREATE TABLE IF NOT EXISTS published_posts (
     FOREIGN KEY(script_id) REFERENCES scripts(id)
 );
 
+CREATE TABLE IF NOT EXISTS post_insights (
+    instagram_media_id TEXT PRIMARY KEY,
+    script_id INTEGER,
+    category TEXT,
+    fetched_at TEXT NOT NULL,
+    reach REAL DEFAULT 0,
+    views REAL DEFAULT 0,
+    saved REAL DEFAULT 0,
+    shares REAL DEFAULT 0,
+    likes REAL DEFAULT 0,
+    comments REAL DEFAULT 0,
+    avg_watch_ms REAL DEFAULT 0,
+    skip_rate REAL,
+    raw_json TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE TABLE IF NOT EXISTS daily_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     metric_date TEXT NOT NULL,
@@ -612,7 +628,8 @@ class Database:
     def due_publish_jobs(self, now_iso: str, limit: int = 20, ignore_schedule: bool = False) -> list[dict[str, Any]]:
         query = """
             SELECT p.*, s.full_script, s.hook, s.source_notes, s.compliance_notes, s.scheduled_at AS script_scheduled_at,
-                   r.output_path, r.audio_path, r.subtitle_path, r.metadata_json AS render_metadata_json
+                   r.output_path, r.audio_path, r.subtitle_path, r.metadata_json AS render_metadata_json,
+                   (SELECT t.category FROM content_topics t WHERE t.id = s.topic_id) AS category
             FROM publish_jobs p
             JOIN scripts s ON p.script_id = s.id
             JOIN render_jobs r ON p.render_job_id = r.id
@@ -668,6 +685,45 @@ class Database:
                     json_dumps(metadata),
                 ),
             )
+
+    def posts_for_insights(self, days: int = 14) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                SELECT p.instagram_media_id, p.script_id, p.published_at,
+                       (SELECT t.category FROM scripts s JOIN content_topics t ON t.id = s.topic_id WHERE s.id = p.script_id) AS category
+                FROM published_posts p
+                WHERE datetime(p.published_at) >= datetime('now', ?)
+                  AND p.instagram_media_id NOT LIKE 'dryrun%'
+                ORDER BY p.published_at DESC
+                """,
+                (f"-{days} day",),
+            )
+            return self._fetchall_dicts(cursor)
+
+    def upsert_post_insights(self, row: dict[str, Any]) -> None:
+        columns = ["instagram_media_id", "script_id", "category", "fetched_at", "reach", "views", "saved", "shares",
+                   "likes", "comments", "avg_watch_ms", "skip_rate", "raw_json"]
+        values = [row.get(column) for column in columns]
+        with self.connect() as conn:
+            conn.execute(
+                f"INSERT OR REPLACE INTO post_insights({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+                values,
+            )
+
+    def category_performance(self, days: int = 30) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                SELECT category, COUNT(*) AS posts, SUM(reach) AS reach, SUM(saved) AS saved, SUM(shares) AS shares,
+                       SUM(likes) AS likes, AVG(skip_rate) AS skip_rate
+                FROM post_insights
+                WHERE category IS NOT NULL AND datetime(fetched_at) >= datetime('now', ?)
+                GROUP BY category
+                """,
+                (f"-{days} day",),
+            )
+            return self._fetchall_dicts(cursor)
 
     def recent_published_posts(self, days: int = 30) -> list[dict[str, Any]]:
         with self.connect() as conn:

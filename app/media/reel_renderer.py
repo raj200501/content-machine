@@ -16,6 +16,7 @@ Frames are drawn with Pillow and piped straight into ffmpeg.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import subprocess
@@ -298,7 +299,7 @@ def _job_card(data: dict) -> Image.Image:
     info_rows = [("pin", location)] if location else []
     if pay:
         info_rows.append(("pay", pay))
-    if posted is not None:
+    if posted is not None and int(posted) <= 21:  # an old date reads as stale; skip it
         info_rows.append(("clock", "Posted today" if int(posted) <= 0 else f"Posted {int(posted)}d ago"))
     height += 26 + len(info_rows) * 82 + 46
 
@@ -621,5 +622,103 @@ def render_reel(settings: Settings, script_row: dict, output_root: Path) -> Rend
             "thumb_offset_ms": int(max(hook_end - 0.05, 0.2) * 1000),
             "scenes": [scene.kind for scene in scenes],
         },
+        fallback_used=True,
+    )
+
+
+# ----------------------------------------------------------- carousel -----
+
+SLIDE_W, SLIDE_H = 1080, 1350  # 4:5, the tallest feed format
+
+
+def _slide_base(seed: int) -> Image.Image:
+    background = build_background(seed)
+    return background.crop((120, 300, 120 + SLIDE_W, 300 + SLIDE_H)).convert("RGBA")
+
+
+def _centered(draw: ImageDraw.ImageDraw, y: int, text: str, face, fill) -> None:
+    draw.text(((SLIDE_W - face.getlength(text)) / 2, y), text, font=face, fill=fill)
+
+
+def _slide_footer(draw: ImageDraw.ImageDraw, index: int, total: int, handle: str) -> None:
+    face = font(30, 700)
+    draw.text((LEFT, SLIDE_H - 96), handle, font=face, fill=PALETTE["muted"])
+    label = f"{index}/{total}"
+    draw.text((SLIDE_W - LEFT - face.getlength(label), SLIDE_H - 96), label, font=face, fill=PALETTE["muted"])
+
+
+def render_carousel(settings: Settings, script_row: dict, output_root: Path) -> RenderArtifact:
+    metadata = json_loads(script_row.get("metadata_json"), default={}) or {}
+    scenes = [scene for scene in metadata.get("scenes", []) if isinstance(scene, dict)]
+    jobs = [scene for scene in scenes if scene.get("kind") == "job"][:8]
+    cover = next((scene for scene in scenes if scene.get("kind") == "roundup_cover"), {})
+    handle = settings.brand_handle or "@careerstacked"
+    slug = slugify(f"{script_row['id']}-{hash_text(script_row['full_script'])[:10]}")
+    work_dir = ensure_directory(output_root / slug)
+    seed = int(hash_text(script_row["full_script"])[:8], 16)
+    total = len(jobs) + 2
+    paths: list[Path] = []
+
+    # Cover slide.
+    slide = _slide_base(seed)
+    draw = ImageDraw.Draw(slide)
+    _pill(draw, LEFT, 120, _kicker_text({**script_row, "category": "openings_job_alert"}).replace("JOB DROP", "SAVE THIS"), font(34, 800), PALETTE["accent"], (255, 255, 255))
+    title = f"{len(jobs)} tech {cover.get('roles', 'roles')} open right now"
+    face, placed = layout_big_text(title.split(), (LEFT, 260, RIGHT, 760), start_size=112, min_size=70, max_lines=4)
+    words = title.split()
+    for index, x, y in placed:
+        color = PALETTE["highlight"] if index == 0 else PALETTE["text"]
+        draw.text((x, y), words[index], font=face, fill=color)
+    chip_face = font(36, 800)
+    x, y = LEFT, 820
+    for name in cover.get("companies", [])[:8]:
+        width = int(chip_face.getlength(name)) + 52
+        if x + width > RIGHT:
+            x, y = LEFT, y + 84
+        if y > 1080:
+            break
+        _pill(draw, x, y, name, chip_face, (255, 255, 255), PALETTE["card_text"])
+        x += width + 16
+    _centered(draw, 1160, "Swipe for pay, location and role  →", font(38, 700), PALETTE["muted"])
+    _slide_footer(draw, 1, total, handle)
+    paths.append(work_dir / "slide_01.jpg")
+    slide.convert("RGB").save(paths[-1], "JPEG", quality=92)
+
+    # One job per slide.
+    for number, job in enumerate(jobs, start=1):
+        slide = _slide_base(seed + number)
+        draw = ImageDraw.Draw(slide)
+        card = _job_card({**job, "number": number, "total": len(jobs)})
+        y = max((SLIDE_H - card.size[1]) // 2 - 40, 120)
+        slide.alpha_composite(card, (LEFT, y))
+        tip = "Search this exact title on their careers page"
+        _centered(draw, min(y + card.size[1] + 30, SLIDE_H - 200), tip, font(34, 700), PALETTE["muted"])
+        _slide_footer(draw, number + 1, total, handle)
+        paths.append(work_dir / f"slide_{number + 1:02d}.jpg")
+        slide.convert("RGB").save(paths[-1], "JPEG", quality=92)
+
+    # Closing slide.
+    slide = _slide_base(seed + 99)
+    draw = ImageDraw.Draw(slide)
+    lines = ["Save this for later.", "Send it to a friend", "who's applying."]
+    for row, text in enumerate(lines):
+        _centered(draw, 360 + row * 120, text, font(84, 800), PALETTE["text"] if row else PALETTE["highlight"])
+    _icon_plane(draw, SLIDE_W // 2 - 260, 790, 58, PALETTE["highlight"])
+    _pill(draw, SLIDE_W // 2 - 180, 774, "New roles every day", font(42, 800), (255, 255, 255), PALETTE["card_text"])
+    _centered(draw, 920, f"Follow {handle}", font(44, 700), PALETTE["muted"])
+    _slide_footer(draw, total, total, handle)
+    paths.append(work_dir / f"slide_{total:02d}.jpg")
+    slide.convert("RGB").save(paths[-1], "JPEG", quality=92)
+
+    manifest = work_dir / "carousel.json"
+    manifest.write_text(json.dumps({"slides": [str(path) for path in paths]}), encoding="utf-8")
+    return RenderArtifact(
+        script_id=script_row["id"],
+        provider="local_carousel",
+        video_path=manifest,
+        audio_path=manifest,
+        subtitle_path=manifest,
+        duration_seconds=0.0,
+        metadata={"format": "carousel", "slides": [str(path) for path in paths], "work_dir": str(work_dir)},
         fallback_used=True,
     )

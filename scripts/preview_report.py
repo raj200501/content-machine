@@ -16,7 +16,8 @@ rows = conn.execute(
     SELECT s.id, s.scheduled_at, s.full_script, s.caption, s.hashtags, s.fact_status, s.metadata_json,
            t.category,
            (SELECT r.output_path FROM render_jobs r WHERE r.script_id = s.id AND r.status = 'completed' ORDER BY r.id DESC LIMIT 1) AS video,
-           (SELECT r.error FROM render_jobs r WHERE r.script_id = s.id AND r.status = 'failed' ORDER BY r.id DESC LIMIT 1) AS error
+           (SELECT r.error FROM render_jobs r WHERE r.script_id = s.id AND r.status = 'failed' ORDER BY r.id DESC LIMIT 1) AS error,
+           (SELECT r.metadata_json || ' dur=' || r.duration_seconds FROM render_jobs r WHERE r.script_id = s.id AND r.status = 'completed' ORDER BY r.id DESC LIMIT 1) AS render_meta
     FROM scripts s JOIN content_topics t ON t.id = s.topic_id ORDER BY s.scheduled_at
     """
 ).fetchall()
@@ -26,6 +27,7 @@ for row in rows:
     lines += [
         f"## Script {row['id']} · {row['category']} · {row['scheduled_at']} · fact={row['fact_status']}",
         f"video: {row['video'] or 'NOT RENDERED'}" + (f" · error: {row['error']}" if row["error"] else ""),
+        f"render: {(row['render_meta'] or '')[:300]}",
         "",
         "```",
         row["full_script"],
