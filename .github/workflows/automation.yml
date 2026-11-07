@@ -20,9 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # Only the four Instagram secrets are required. Turso is optional: without it,
+      # Only two Instagram secrets are required (Page token + IG user ID). Turso is optional: without it,
       # state (the SQLite DB) is carried between runs with the Actions cache.
-      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && secrets.INSTAGRAM_APP_ID != '' && secrets.INSTAGRAM_APP_SECRET != '' && 'true' || 'false' }}
+      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && 'true' || 'false' }}
       USE_TURSO: ${{ secrets.TURSO_DATABASE_URL != '' && secrets.TURSO_AUTH_TOKEN != '' && 'true' || 'false' }}
       PIPER_VOICE: en_US-lessac-medium
     steps:

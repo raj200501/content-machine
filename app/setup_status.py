@@ -8,11 +8,11 @@ from shutil import which
 from app.config import Settings
 
 
+# Publishing only needs the non-expiring Page token and the Instagram user ID.
+# INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET are used once, by `exchange-token`.
 LIVE_PUBLISH_ENV = (
     "INSTAGRAM_ACCESS_TOKEN",
     "INSTAGRAM_IG_USER_ID",
-    "INSTAGRAM_APP_ID",
-    "INSTAGRAM_APP_SECRET",
     "PUBLIC_MEDIA_BASE_URL",
 )
 
@@ -21,8 +21,6 @@ LIVE_PUBLISH_ENV = (
 GITHUB_AUTOMATION_ENV = (
     "INSTAGRAM_ACCESS_TOKEN",
     "INSTAGRAM_IG_USER_ID",
-    "INSTAGRAM_APP_ID",
-    "INSTAGRAM_APP_SECRET",
 )
 
 R2_ENV = (

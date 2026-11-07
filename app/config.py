@@ -120,8 +120,6 @@ class Settings(BaseSettings):
         return bool(
             self.instagram_access_token
             and self.instagram_ig_user_id
-            and self.instagram_app_id
-            and self.instagram_app_secret
             and self.public_media_base_url
         )
 
