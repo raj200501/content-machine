@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 from pathlib import Path
 
@@ -83,6 +85,10 @@ def publish_due_jobs(
             recent_posts.insert(0, {"caption": job["caption"], "hook": job["hook"]})
             stats["published"] += 1
         except Exception as exc:
+            # Meta error messages never include the access token (see MetaAPIError).
+            logging.getLogger(__name__).warning(
+                "Publish failed for job %s (attempt %s): %s", job["id"], current_attempts, exc
+            )
             status = "failed" if current_attempts >= 5 else "ready"
             db.update_publish_job(job["id"], status=status, last_error=str(exc), attempts=current_attempts)
             stats["failed"] += 1
