@@ -86,16 +86,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Restore voice model
+      - name: Restore voice models
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: assets/voices
-          key: piper-voice-${{ env.PIPER_VOICE }}
+          key: voices-kokoro-v1.0-${{ env.PIPER_VOICE }}
 
-      - name: Download voice model if missing
+      - name: Download voice models if missing
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
-        run: ./scripts/install_piper_voice.sh "$PIPER_VOICE"
+        run: |
+          ./scripts/install_kokoro.sh
+          ./scripts/install_piper_voice.sh "$PIPER_VOICE" || echo "Piper fallback voice unavailable; Kokoro will be used."
 
       - name: Restore state database
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true'

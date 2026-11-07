@@ -9,11 +9,10 @@ from itertools import cycle
 from app.models import CaptionPackage, PlannedTopic, ScriptPackage
 from app.utils import json_loads
 from app.writing.caption_writer import build_caption
-from app.writing.prompt_templates import JOB_ALERT_HOOKS, JOB_ALERT_TIPS, SCRIPT_CTAS
+from app.writing.prompt_templates import CATEGORY_SUBS, JOB_ALERT_CTAS, JOB_ALERT_TIPS, SCRIPT_CTAS
 from app.writing.script_packs import pick_pack
 
 CTA_CYCLE = cycle(SCRIPT_CTAS)
-ORDINALS = ["First,", "Next,", "And"]
 COUNT_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five"}
 
 
@@ -78,6 +77,8 @@ def spoken_job_title(title: str) -> tuple[str, str]:
 def spoken_location(location: str) -> str:
     if not location:
         return ""
+    if re.match(r"^\s*washington,?\s*d\.?\s?c\.?", location, re.I):
+        return "Washington, D.C."
     first = re.split(r"\s+or\s+|\s+and\s+\d+\s+more|•|;|/", location)[0]
     first = re.sub(r"\b(Hybrid|Remote|In-Office)\s*-\s*", "", first, flags=re.I)
     first = re.sub(r"\s+-\s+.*$", "", first.split(",")[0]).strip()
@@ -86,29 +87,102 @@ def spoken_location(location: str) -> str:
     return first
 
 
-def _job_line(index: int, item: dict) -> str:
+def _posted_days(item: dict, day: str) -> int | None:
+    published = str(item.get("published_at") or "")[:10]
+    try:
+        return max((date.fromisoformat(day) - date.fromisoformat(published)).days, 0)
+    except ValueError:
+        return None
+
+
+def _job_details(item: dict, day: str) -> dict:
     metadata = _metadata(item)
     company = _company(item) or "One company"
     title, audience = spoken_job_title(metadata.get("job_title") or item.get("title", ""))
     location = spoken_location(metadata.get("location", ""))
-    lead = ORDINALS[index] if index < len(ORDINALS) else "Also,"
     if location and title.lower().endswith(", " + location.lower()):
         title = title[: -(len(location) + 2)]
-    where = f" in {location}" if location else ""
-    who = f", {audience}" if audience else ""
-    article = "an" if title[:1].lower() in "aeiou" else "a"
-    return f"{lead} {company} is hiring {article} {title}{where}{who}."
+    role = title[:1].upper() + title[1:]
+    if audience:
+        role = f"{role} ({audience.replace('for ', '').replace(' students', '')})"
+    return {
+        "company": company,
+        "title": title,
+        "role": role,
+        "audience": audience,
+        "location": location,
+        "pay": str(metadata.get("pay") or ""),
+        "pay_spoken": str(metadata.get("pay_spoken") or ""),
+        "posted_days": _posted_days(item, day),
+    }
 
 
-def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int) -> tuple[str, list[str]]:
-    jobs = evidence_items[:3]
-    hook = JOB_ALERT_HOOKS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_HOOKS)].format(
-        count=COUNT_WORDS.get(len(jobs) or 3, "These"),
-        count_lower=COUNT_WORDS.get(len(jobs) or 3, "these").lower(),
-    )
-    beats = [_job_line(index, item) for index, item in enumerate(jobs)]
+def _job_line(details: dict) -> str:
+    where = f" in {details['location']}" if details["location"] else ""
+    who = f", {details['audience']}" if details["audience"] else ""
+    line = f"{details['company']}: {details['title']}{where}{who}"
+    line = line if line.endswith(".") else line + "."
+    if details["pay"]:
+        # Written compactly for the screen; the voice layer says "47 to 58 dollars an hour".
+        line += f" The posting lists {details['pay']}."
+    return line
+
+
+def _audience_word(jobs: list[dict]) -> tuple[str, str]:
+    titles = " ".join(job["title"].lower() for job in jobs)
+    if "intern" in titles and "new grad" not in titles:
+        return "interns", "internships"
+    if "new grad" in titles and "intern" not in titles:
+        return "new grads", "new grad roles"
+    return "students and new grads", "early-career roles"
+
+
+def _join_names(names: list[str]) -> str:
+    if len(names) <= 1:
+        return "".join(names)
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int) -> tuple[str, list[str], list[dict]]:
+    jobs = [_job_details(item, topic.day) for item in evidence_items[:3]]
+    companies = [job["company"] for job in jobs]
+    audience, roles = _audience_word(jobs)
+    names = _join_names(companies)
+    paid = [job for job in jobs if job["pay"]]
+    fresh = all(job["posted_days"] is not None and job["posted_days"] <= 7 for job in jobs)
+    options = [
+        f"{names} are hiring {audience} right now.",
+        f"Apply to these {roles} at {names} this week.",
+    ]
+    if fresh:
+        options.append(f"{names} just posted new {roles}.")
+    if paid:
+        top = paid[0]
+        role_word = "internship" if "intern" in top["title"].lower() else "role"
+        top_pay = top["pay"].split("–")[-1]
+        if "–" in top["pay"] and not top_pay.startswith(("$", "£", "€")):
+            top_pay = top["pay"][0] + top_pay
+        options.append(f"This {top['company']} {role_word} lists up to {top_pay}.")
+    hook = options[(day_ordinal + topic.slot_index) % len(options)]
+    beats = [_job_line(job) for job in jobs]
     beats.append(JOB_ALERT_TIPS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_TIPS)])
-    return hook, beats
+    sub = {"interns": "Internships", "new grads": "New grad roles"}.get(audience, "Students & new grads")
+    if paid:
+        sub += "  ·  pay listed"
+    scenes = [{"kind": "hook", "companies": companies, "sub": sub}]
+    for job in jobs:
+        scenes.append(
+            {
+                "kind": "job",
+                "company": job["company"],
+                "role": job["role"],
+                "location": job["location"],
+                "pay": job["pay"],
+                "posted_days": job["posted_days"],
+            }
+        )
+    scenes.append({"kind": "point", "label": "DO THIS TONIGHT"})
+    return hook, beats, scenes
 
 
 def _market_from_headline(topic: PlannedTopic, evidence_items: list[dict]) -> tuple[str, list[str]] | None:
@@ -141,8 +215,10 @@ def build_script(
 
     hook = ""
     beats: list[str] = []
+    scenes: list[dict] = []
     if topic.category == "openings_job_alert" and evidence_items:
-        hook, beats = _job_alert(topic, evidence_items, day_ordinal)
+        hook, beats, scenes = _job_alert(topic, evidence_items, day_ordinal)
+        cta = JOB_ALERT_CTAS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_CTAS)]
     elif topic.category == "market_context":
         sourced = _market_from_headline(topic, evidence_items)
         if sourced:
@@ -158,6 +234,10 @@ def build_script(
             hook = topic.hook_style[:1].upper() + topic.hook_style[1:] + "."
             beats = [topic.angle or "Pick one small, concrete step and do it today."]
 
+    if not scenes:
+        scenes = [{"kind": "hook", "sub": CATEGORY_SUBS.get(topic.category, "")}]
+        scenes += [{"kind": "point"} for _ in beats[:4]]
+    scenes = scenes[: 1 + len(beats[:4])] + [{"kind": "cta"}]
     full_script = "\n".join([hook, *beats[:4], cta])
     caption: CaptionPackage = build_caption(topic, hook, beats, evidence_items, cta)
     evidence = [
@@ -177,5 +257,5 @@ def build_script(
         full_script=full_script,
         caption=caption,
         evidence=evidence,
-        metadata={"word_count": len(full_script.split())},
+        metadata={"word_count": len(full_script.split()), "scenes": scenes},
     )

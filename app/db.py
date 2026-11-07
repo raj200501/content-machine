@@ -612,7 +612,7 @@ class Database:
     def due_publish_jobs(self, now_iso: str, limit: int = 20, ignore_schedule: bool = False) -> list[dict[str, Any]]:
         query = """
             SELECT p.*, s.full_script, s.hook, s.source_notes, s.compliance_notes, s.scheduled_at AS script_scheduled_at,
-                   r.output_path, r.audio_path, r.subtitle_path
+                   r.output_path, r.audio_path, r.subtitle_path, r.metadata_json AS render_metadata_json
             FROM publish_jobs p
             JOIN scripts s ON p.script_id = s.id
             JOIN render_jobs r ON p.render_job_id = r.id

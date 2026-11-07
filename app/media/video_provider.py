@@ -9,6 +9,7 @@ from app.media.audio_tts import synthesize_audio
 from app.media.compositor import compose_with_background_video
 from app.media.hf_provider import HFProvider
 from app.media.local_reel_builder import LocalFallbackReelBuilder
+from app.media.reel_renderer import render_reel
 from app.media.subtitles import write_srt
 from app.models import RenderArtifact
 from app.utils import ensure_directory, hash_text, slugify
@@ -77,13 +78,16 @@ def render_with_fallback(settings: Settings, script_row: dict, output_root: Path
     if not settings.enable_local_fallback:
         raise RuntimeError(f"provider render failed and local fallback disabled: {provider_error}")
 
-    artifact = LocalFallbackReelBuilder(settings).render(
-        script_row["id"],
-        script_row["full_script"],
-        output_root,
-        prompt_hint=script_row["hook"],
-        category=script_row.get("category", "") or "",
-    )
+    if settings.renderer == "cards":  # the previous still-card renderer, kept as a fallback
+        artifact = LocalFallbackReelBuilder(settings).render(
+            script_row["id"],
+            script_row["full_script"],
+            output_root,
+            prompt_hint=script_row["hook"],
+            category=script_row.get("category", "") or "",
+        )
+    else:
+        artifact = render_reel(settings, script_row, output_root)
     if provider_error:
         artifact.metadata["provider_error"] = provider_error
     return artifact

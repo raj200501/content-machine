@@ -10,6 +10,7 @@ from pathlib import Path
 from app.config import Settings
 from app.db import Database
 from app.publishing.instagram_meta import InstagramMetaPublisher
+from app.utils import json_loads
 from app.publishing.post_history import script_hash, too_similar
 
 
@@ -59,10 +60,14 @@ def publish_due_jobs(
                 stats["failed"] += 1
                 stats["missing_media"] += 1
                 continue
+            render_meta = json_loads(job.get("render_metadata_json"), default={}) or {}
+            nested = render_meta.get("metadata") if isinstance(render_meta.get("metadata"), dict) else {}
+            thumb_offset = render_meta.get("thumb_offset_ms") or nested.get("thumb_offset_ms")
             result = publisher.publish_reel(
                 render_path,
                 job["caption"],
                 f"{job['script_id']}-{job['hook']}",
+                thumb_offset_ms=int(thumb_offset) if thumb_offset else None,
             )
             db.update_publish_job(
                 job["id"],

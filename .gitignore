@@ -19,3 +19,4 @@ output/published/staged/*
 !output/logs/.gitkeep
 assets/voices/*.onnx
 assets/voices/*.onnx.json
+assets/voices/*.bin

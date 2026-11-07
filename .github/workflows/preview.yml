@@ -1,0 +1,67 @@
+name: render-preview
+
+# Renders a day's reels from live sources in DRY-RUN mode on a throwaway
+# database, then uploads the MP4s and a script/caption report. Never publishes
+# and never touches the real state cache. Runs on pushes to claude/** branches
+# and on demand.
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["app/**", "scripts/**", "requirements.txt", ".github/workflows/preview.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PIPER_VOICE: en_US-lessac-medium
+      DRY_RUN: "true"
+      POSTS_PER_DAY: "5"
+      BATCH_RENDER_SIZE: "5"
+      DATABASE_PATH: output/preview.db
+      ENABLE_VIDEO_PROVIDER: "false"
+      ENABLE_LOCAL_FALLBACK: "true"
+      BRAND_HANDLE: "@careerstacked"
+      TIMEZONE: America/New_York
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install ffmpeg
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y ffmpeg; fi
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Restore voice models
+        uses: actions/cache@v4
+        with:
+          path: assets/voices
+          key: voices-kokoro-v1.0-${{ env.PIPER_VOICE }}
+      - name: Download voice models if missing
+        run: |
+          ./scripts/install_kokoro.sh
+          ./scripts/install_piper_voice.sh "$PIPER_VOICE" || true
+      - name: Render a dry-run day
+        run: |
+          python -m app.cli init-db
+          time python -m app.cli daily-run
+      - name: Report
+        if: always()
+        run: python scripts/preview_report.py output/preview.db output/preview.md && cat output/preview.md
+      - name: Upload previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-${{ github.run_id }}
+          path: |
+            output/preview.md
+            output/rendered/**/*.mp4
+          retention-days: 7

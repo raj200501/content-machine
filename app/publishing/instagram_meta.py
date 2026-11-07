@@ -187,13 +187,16 @@ class InstagramMetaPublisher:
         if self.settings.delete_staged_media_after_publish and staged_path.exists():
             staged_path.unlink(missing_ok=True)
 
-    def create_media_container(self, video_url: str, caption: str) -> str:
+    def create_media_container(self, video_url: str, caption: str, thumb_offset_ms: int | None = None) -> str:
         payload = {
             "media_type": "REELS",
             "video_url": video_url,
             "caption": caption,
             "share_to_feed": "true",
         }
+        if thumb_offset_ms is not None:
+            # Cover frame: the moment the hook is fully on screen.
+            payload["thumb_offset"] = str(int(thumb_offset_ms))
         token, ig_user_id = self.publish_credentials()
         payload["access_token"] = token
         data = self._request("POST", f"{ig_user_id}/media", data=payload)
@@ -262,7 +265,7 @@ class InstagramMetaPublisher:
         )
         return str(data["id"])
 
-    def publish_reel(self, render_path: Path, caption: str, slug: str) -> dict:
+    def publish_reel(self, render_path: Path, caption: str, slug: str, thumb_offset_ms: int | None = None) -> dict:
         staged_path, media_url, object_key = self.stage_media(render_path, slug)
         if self.settings.dry_run:
             return {
@@ -274,7 +277,7 @@ class InstagramMetaPublisher:
                 "instagram_media_id": f"dryrun_media_{slugify(slug)}",
             }
 
-        creation_id = self.create_media_container(media_url, caption)
+        creation_id = self.create_media_container(media_url, caption, thumb_offset_ms)
         container_status = self.poll_until_ready(creation_id)
         media_id = self.publish_container(creation_id)
         result = {

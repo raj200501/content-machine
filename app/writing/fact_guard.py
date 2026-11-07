@@ -39,13 +39,22 @@ def _needs_strict_support(claim: str) -> bool:
     return any(pattern.search(claim) for pattern in STRICT_PATTERNS)
 
 
+def _numbers(value: str) -> set[str]:
+    return {number.replace(",", "") for number in re.findall(r"\d[\d,]*(?:\.\d+)?", value)}
+
+
 def _supporting_evidence(claim: str, evidence_items: list[dict]) -> tuple[bool, list[dict]]:
     claim_tokens = _tokens(claim)
+    claim_numbers = _numbers(claim)
     matches: list[dict] = []
     for item in evidence_items:
-        evidence_text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('text_content', '')[:400]}"
+        evidence_text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('text_content', '')[:600]}"
         overlap = claim_tokens & _tokens(evidence_text)
-        if claim_tokens and len(overlap) / max(len(claim_tokens), 1) >= 0.22:
+        ratio = len(overlap) / max(len(claim_tokens), 1) if claim_tokens else 0.0
+        # A number is supported when that exact number appears in the source
+        # (for example a posted pay range) and the line is about that source.
+        numbers_backed = bool(claim_numbers) and claim_numbers <= _numbers(evidence_text) and bool(overlap)
+        if claim_tokens and (ratio >= 0.22 or numbers_backed):
             matches.append(
                 {
                     "title": item.get("title", ""),

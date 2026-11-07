@@ -66,6 +66,20 @@ class Settings(BaseSettings):
     r2_region: str = "auto"
     delete_staged_media_after_publish: bool = True
 
+    # Voice: "auto" uses Kokoro when its model files exist, else the older chain.
+    tts_engine: str = "auto"
+    kokoro_model_path: str = ""
+    kokoro_voices_path: str = ""
+    kokoro_voice: str = "af_heart"
+    kokoro_speed: float = 1.15
+    voice_pause_after_hook: float = 0.32
+    voice_pause_between_lines: float = 0.2
+    # Soft generated music bed under the voice (no licensed audio needed).
+    music_bed: bool = True
+    music_bed_volume_db: float = -24.0
+    render_fps: int = 30
+    renderer: str = "motion"  # motion (frame-by-frame) | cards (old still cards)
+
     piper_model_path: str = ""
     piper_voice: str = "en_US-lessac-medium"
     piper_length_scale: float = 0.92

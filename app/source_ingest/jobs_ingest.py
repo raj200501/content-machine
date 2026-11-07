@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from app.config import Settings
 from app.models import SourceDefinition, SourceItemCandidate
 from app.source_ingest.dedupe import duplicate_hash
+from app.source_ingest.pay import PayRange, from_greenhouse, from_lever
 from app.source_ingest.source_ranker import extract_entities, extract_roles, freshness_score, score_relevance
 
 LOG = logging.getLogger(__name__)
@@ -73,7 +74,10 @@ def _build_candidate(
     text: str,
     published_at: str | None,
     location: str = "",
+    pay: PayRange | None = None,
 ) -> SourceItemCandidate | None:
+    if pay:
+        text = f"{text} Pay range: {pay.display}."
     relevance = score_relevance(title, text)
     if relevance < 10:
         return None
@@ -97,8 +101,30 @@ def _build_candidate(
             "company": _company_name(source),
             "location": _clean_location(location),
             "job_title": title.strip(),
+            "pay": pay.display if pay else "",
+            "pay_spoken": pay.spoken if pay else "",
         },
     )
+
+
+def _greenhouse_pay(source: SourceDefinition, job: dict, settings: Settings) -> PayRange | None:
+    """Fetch one posting's detail with pay transparency data (only for wanted roles)."""
+
+    job_id = job.get("id")
+    if not job_id:
+        return None
+    try:
+        response = requests.get(
+            f"{source.url.rstrip('/')}/{job_id}",
+            params={"pay_transparency": "true"},
+            timeout=min(settings.request_timeout_seconds, 12),
+            headers={"User-Agent": settings.user_agent},
+        )
+        response.raise_for_status()
+        return from_greenhouse(response.json())
+    except Exception as exc:
+        LOG.debug("pay lookup failed for %s %s: %s", source.name, job_id, exc)
+        return None
 
 
 def _greenhouse(source: SourceDefinition, settings: Settings) -> list[SourceItemCandidate]:
@@ -116,7 +142,10 @@ def _greenhouse(source: SourceDefinition, settings: Settings) -> list[SourceItem
         url = job.get("absolute_url") or source.url
         location = (job.get("location") or {}).get("name", "")
         text = f"{title}. {_company_name(source)}. {location}. Public Greenhouse listing."
-        candidate = _build_candidate(source, url, title, text, job.get("first_published") or job.get("updated_at"), location)
+        pay = _greenhouse_pay(source, job, settings)
+        candidate = _build_candidate(
+            source, url, title, text, job.get("first_published") or job.get("updated_at"), location, pay
+        )
         if candidate:
             items.append(candidate)
         if len(items) >= limit:
@@ -139,7 +168,11 @@ def _lever(source: SourceDefinition, settings: Settings) -> list[SourceItemCandi
         created = job.get("createdAt")
         if isinstance(created, (int, float)):
             created = datetime.utcfromtimestamp(created / 1000).isoformat()
-        candidate = _build_candidate(source, url, title, text, created, location)
+        try:
+            pay = from_lever(job)
+        except Exception:  # pragma: no cover - defensive: never drop a posting over pay parsing
+            pay = None
+        candidate = _build_candidate(source, url, title, text, created, location, pay)
         if candidate:
             items.append(candidate)
         if len(items) >= limit:

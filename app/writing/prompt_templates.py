@@ -2,26 +2,34 @@
 
 from __future__ import annotations
 
+# Sends (DM shares) are the strongest signal for reaching new people, then saves.
 SCRIPT_CTAS = [
-    "Save this and send it to a friend who's applying.",
-    "Follow for new roles and tips every day.",
-    "Save this, then go fix one thing before tonight.",
-    "Share this with someone deep in internship season.",
+    "Save this for your next application, and send it to a friend who needs it.",
+    "Send this to a friend who's recruiting right now.",
+    "Save this before your next interview.",
+    "Follow for one fix like this every day.",
 ]
 
-JOB_ALERT_HOOKS = [
-    "{count} early-career tech roles you can apply to right now.",
-    "Companies hiring early-career engineers this week.",
-    "{count} live roles for students and new grads.",
-    "Apply to these {count_lower} roles before they fill up.",
+JOB_ALERT_CTAS = [
+    "Send this to a friend who's applying, and follow for tomorrow's drop.",
+    "Send this to the friend who still needs an internship. New roles drop here daily.",
+    "Send this to your group chat before these fill up.",
 ]
 
 JOB_ALERT_TIPS = [
-    "Search the exact title on each company's careers page and apply this week.",
+    "Search the exact title on each careers page and apply this week.",
     "Tailor your top resume bullet to each role before you hit submit.",
     "Early applications get read first, so don't sit on these.",
-    "Find one engineer on that team and send a short, specific note after you apply.",
+    "After you apply, send one short note to an engineer on that team.",
 ]
+
+CATEGORY_SUBS = {
+    "application_strategy": "Applications that get replies",
+    "interview_prep": "Interview prep for students",
+    "resume_portfolio": "Resume fixes that work",
+    "market_context": "What's happening in hiring",
+    "motivational_community": "For anyone recruiting right now",
+}
 
 CATEGORY_INTROS = {
     "openings_job_alert": "Quick hiring check",

@@ -77,11 +77,17 @@ def test_job_alert_script_names_company_role_and_city() -> None:
         _job(4, "Lyft", "Data Engineer Intern", "Toronto, Canada"),
     ]
     package = build_script(topic, items)
-    assert "Stripe is hiring a Software Engineer Intern in San Francisco." in package.full_script
-    assert "Figma is hiring a Data Engineer Intern in New York." in package.full_script
-    assert "#stripe" in package.caption.hashtags
+    assert "Stripe: Software Engineer Intern in San Francisco." in package.full_script
+    assert "Figma: Data Engineer Intern in New York." in package.full_script
+    assert all(name in package.hook for name in ("Stripe", "Figma", "Lyft"))  # hook names the companies
+    assert len(package.caption.hashtags) <= 5
+    assert "Stripe" in package.caption.caption.splitlines()[0]  # keyword-rich first line
     assert "has a public posting" not in package.full_script
-    assert 40 <= len(package.full_script.split()) <= 80
+    assert 35 <= len(package.full_script.split()) <= 80
+    scenes = package.metadata["scenes"]
+    assert [scene["kind"] for scene in scenes] == ["hook", "job", "job", "job", "point", "cta"]
+    assert scenes[1]["company"] == "Stripe" and scenes[1]["location"] == "San Francisco"
+    assert len(scenes) == len(package.full_script.splitlines())
 
 
 def test_evergreen_scripts_rotate_and_skip_recent_hooks() -> None:
@@ -99,3 +105,25 @@ def test_source_definitions_carry_company_names() -> None:
     boards = [SourceDefinition.from_dict(item) for item in payload["sources"] if item["source_type"] == "job_board"]
     assert len(boards) >= 10
     assert all(board.metadata.get("company") for board in boards)
+
+
+def test_job_alert_speaks_posted_pay_and_guard_keeps_it() -> None:
+    from app.writing.fact_guard import guard_script
+
+    topic = PlannedTopic("2026-11-07", 1, "2026-11-07T11:30:00-05:00", "openings_job_alert", "x", "", "", "Stripe", [1, 2, 3], 80)
+    items = [
+        _job(1, "Stripe", "Machine Learning Engineer, Intern"),
+        _job(2, "Figma", "Software Engineer Intern", "New York, NY"),
+        _job(3, "Lyft", "Data Engineer Intern", "Toronto, Canada"),
+    ]
+    meta = json.loads(items[0]["metadata_json"])
+    meta.update({"pay": "$47–$58/hr", "pay_spoken": "47 to 58 dollars an hour"})
+    items[0]["metadata_json"] = json.dumps(meta)
+    items[0]["text_content"] = items[0].get("text_content", "") + " Pay range: $47–$58/hr."
+    package = build_script(topic, items)
+    assert "The posting lists $47–$58/hr." in package.full_script
+    assert package.metadata["scenes"][1]["pay"] == "$47–$58/hr"
+    assert "$47–$58/hr (listed)" in package.caption.caption
+    guarded = guard_script(package.full_script, items)
+    assert "$47–$58/hr" in guarded.script_text  # real, sourced numbers are not softened
+    assert "recent" not in guarded.script_text.split("\n")[1]

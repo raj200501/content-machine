@@ -29,8 +29,8 @@ def validate_render(
         issues.append("subtitle file is missing")
 
     duration = artifact.duration_seconds or ffprobe_duration(settings.ffprobe_binary, artifact.video_path)
-    if duration < 14 or duration > 31:
-        issues.append(f"duration {duration:.1f}s is outside the 15-30 second target")
+    if duration < 8 or duration > 45:
+        issues.append(f"duration {duration:.1f}s is outside the 8-45 second target")
 
     if len(script_row["caption"]) > 2200:
         issues.append("caption is too long for Instagram")

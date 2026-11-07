@@ -46,6 +46,8 @@ def _job_groups(source_items: list[dict], company_counts: Counter[str] | None = 
         key=lambda item: (
             # Most followers are undergrads; PhD-only roles go last.
             bool(re.search(r"\bph\.?d\b", item["title"], re.I)),
+            # Postings that list pay make far more useful (and shareable) reels.
+            not (json_loads(item.get("metadata_json"), default={}) or {}).get("pay"),
             -item["freshness_score"],
             company_counts[item_company(item).lower()],
             -item["relevance_score"],
