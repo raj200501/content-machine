@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     brand_handle: str = ""
     burn_subtitles: bool = False
 
+    @field_validator("instagram_access_token", "instagram_ig_user_id", "instagram_app_id", "instagram_app_secret")
+    @classmethod
+    def _strip_credential_whitespace(cls, value: str) -> str:
+        # Tokens and IDs never contain whitespace; copied values often pick up
+        # line breaks or spaces where the token wrapped on screen.
+        return "".join(str(value).split())
+
     @field_validator("posts_per_day", "batch_render_size")
     @classmethod
     def _validate_positive(cls, value: int) -> int:
