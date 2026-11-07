@@ -209,3 +209,59 @@ def test_meta_errors_include_message(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(publisher.session, "request", lambda *a, **k: ErrorResponse())
     with pytest.raises(MetaAPIError, match="Token expired"):
         publisher.create_media_container("https://x/y.mp4", "c")
+
+
+def test_publish_resolves_page_token_from_user_token(monkeypatch, tmp_path: Path) -> None:
+    settings = Settings(
+        dry_run=False,
+        instagram_access_token="user_token",
+        instagram_ig_user_id="",
+        output_dir=tmp_path / "output",
+        assets_dir=tmp_path / "assets",
+        database_path=tmp_path / "db.sqlite",
+        media_staging_dir=tmp_path / "output" / "published" / "staged",
+        public_media_base_url="https://cdn.example.com",
+        turso_database_url="",
+        turso_auth_token="",
+    )
+    settings.ensure_directories()
+    publisher = InstagramMetaPublisher(settings)
+    render_path = tmp_path / "sample.mp4"
+    render_path.write_bytes(b"video")
+    calls = []
+
+    def fake_request(method: str, url: str, timeout: int, **kwargs):
+        calls.append((method, url, kwargs))
+        if url.endswith("/me/accounts"):
+            return DummyResponse(
+                {
+                    "data": [
+                        {"id": "p0", "name": "No IG", "access_token": "page_no_ig"},
+                        {
+                            "id": "p1",
+                            "name": "Careerstacked",
+                            "access_token": "page_token",
+                            "instagram_business_account": {"id": "ig_42", "username": "careerstacked"},
+                        },
+                    ]
+                }
+            )
+        if url.endswith("/ig_42/media"):
+            return DummyResponse({"id": "creation_1"})
+        if url.endswith("/creation_1"):
+            return DummyResponse({"status_code": "FINISHED"})
+        if url.endswith("/ig_42/media_publish"):
+            return DummyResponse({"id": "media_1"})
+        raise AssertionError(f"unexpected call {method} {url}")
+
+    monkeypatch.setattr(publisher.session, "request", fake_request)
+    result = publisher.publish_reel(render_path, "caption", "slug")
+
+    assert result["instagram_media_id"] == "media_1"
+    me_calls = [c for c in calls if c[1].endswith("/me/accounts")]
+    assert len(me_calls) == 1  # looked up once, then cached
+    assert me_calls[0][2]["params"]["access_token"] == "user_token"
+    publish_calls = [c for c in calls if not c[1].endswith("/me/accounts")]
+    for method, _, kwargs in publish_calls:
+        sent = kwargs.get("data") or kwargs.get("params")
+        assert sent["access_token"] == "page_token"

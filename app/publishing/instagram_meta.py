@@ -32,6 +32,44 @@ class InstagramMetaPublisher:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.session = requests.Session()
+        self._publish_credentials: tuple[str, str] | None = None
+
+    def publish_credentials(self) -> tuple[str, str]:
+        """Return (access_token, ig_user_id) to publish with.
+
+        If INSTAGRAM_IG_USER_ID is set, INSTAGRAM_ACCESS_TOKEN is used as-is (a Page
+        token). Otherwise INSTAGRAM_ACCESS_TOKEN is treated as a (long-lived) user
+        token: the Page connected to the Instagram Professional account is looked up
+        and its Page token and Instagram user ID are used. That way only a single
+        GitHub secret is needed.
+        """
+
+        if self._publish_credentials is not None:
+            return self._publish_credentials
+        token = self.settings.instagram_access_token
+        if not token:
+            raise RuntimeError("INSTAGRAM_ACCESS_TOKEN is required for live publishing")
+        if self.settings.instagram_ig_user_id:
+            self._publish_credentials = (token, self.settings.instagram_ig_user_id)
+            return self._publish_credentials
+        pages = self._request(
+            "GET",
+            "me/accounts",
+            params={
+                "fields": "id,name,access_token,instagram_business_account{id,username}",
+                "access_token": token,
+            },
+        )
+        for page in pages.get("data", []):
+            instagram = page.get("instagram_business_account") or {}
+            if instagram.get("id") and page.get("access_token"):
+                self._publish_credentials = (str(page["access_token"]), str(instagram["id"]))
+                return self._publish_credentials
+        raise RuntimeError(
+            "No Facebook Page with a connected Instagram Professional account was found for "
+            "INSTAGRAM_ACCESS_TOKEN. Link the Instagram account to a Page (Instagram app → "
+            "Edit profile → Facebook → Connect) or set INSTAGRAM_IG_USER_ID."
+        )
 
     @property
     def base_url(self) -> str:
@@ -155,9 +193,10 @@ class InstagramMetaPublisher:
             "video_url": video_url,
             "caption": caption,
             "share_to_feed": "true",
-            "access_token": self.settings.instagram_access_token,
         }
-        data = self._request("POST", f"{self.settings.instagram_ig_user_id}/media", data=payload)
+        token, ig_user_id = self.publish_credentials()
+        payload["access_token"] = token
+        data = self._request("POST", f"{ig_user_id}/media", data=payload)
         return str(data["id"])
 
     def connected_instagram_accounts(self) -> list[dict[str, str]]:
@@ -192,6 +231,7 @@ class InstagramMetaPublisher:
         return accounts
 
     def poll_until_ready(self, creation_id: str, timeout_seconds: int = 600, interval_seconds: int = 10) -> dict:
+        token, _ = self.publish_credentials()
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
             data = self._request(
@@ -199,7 +239,7 @@ class InstagramMetaPublisher:
                 creation_id,
                 params={
                     "fields": "status,status_code",
-                    "access_token": self.settings.instagram_access_token,
+                    "access_token": token,
                 },
             )
             status_code = str(data.get("status_code", "")).upper()
@@ -211,12 +251,13 @@ class InstagramMetaPublisher:
         raise TimeoutError(f"Timed out waiting for Meta media container {creation_id}")
 
     def publish_container(self, creation_id: str) -> str:
+        token, ig_user_id = self.publish_credentials()
         data = self._request(
             "POST",
-            f"{self.settings.instagram_ig_user_id}/media_publish",
+            f"{ig_user_id}/media_publish",
             data={
                 "creation_id": creation_id,
-                "access_token": self.settings.instagram_access_token,
+                "access_token": token,
             },
         )
         return str(data["id"])

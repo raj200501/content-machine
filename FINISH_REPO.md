@@ -54,17 +54,19 @@ Instagram app → profile → menu → **Settings and privacy** → **Account ty
    token it saves keeps working unless you change your Facebook password or
    remove the app.
 
-### 5. Add four GitHub secrets (browser, 2 min)
+### 5. Add one GitHub secret (browser, 1 min)
 
-Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
-Copy each value from your `.env`:
+Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
 
 ```text
-INSTAGRAM_ACCESS_TOKEN
-INSTAGRAM_IG_USER_ID
-INSTAGRAM_APP_ID
-INSTAGRAM_APP_SECRET
+INSTAGRAM_ACCESS_TOKEN   = the long-lived user token (Access Token Debugger → Extend Access Token)
 ```
+
+At publish time the workflow looks up the Page connected to your Instagram
+Professional account and uses that Page's token and Instagram user ID, so nothing
+else is required. A long-lived user token lasts about 60 days; to make it
+permanent, run `exchange-token` locally and store the Page token it prints instead,
+plus `INSTAGRAM_IG_USER_ID`.
 
 Optional: on the **Variables** tab, add `BRAND_HANDLE` = `@yourhandle` to print your handle on every reel.
 
@@ -110,7 +112,8 @@ This needs `cloudflared`, installed with `brew install cloudflared`.
   and update the `INSTAGRAM_ACCESS_TOKEN` secret.
 - `Meta API ... (#10) / permissions`: the token is missing `instagram_content_publish`,
   or the Page isn't connected to the Instagram Professional account.
-- Workflow shows **Skipped until required secrets exist**: one of the four secrets is missing.
+- Workflow shows **Skipped until required secrets exist**: `INSTAGRAM_ACCESS_TOKEN` is missing.
+- `No Facebook Page with a connected Instagram Professional account`: link the account (Instagram app → Edit profile → Facebook → Connect).
 - `setup-status` shows voiceover `missing`: run `./scripts/install_piper_voice.sh`.
 
 ## Sources checked

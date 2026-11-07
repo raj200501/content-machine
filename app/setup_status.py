@@ -8,20 +8,18 @@ from shutil import which
 from app.config import Settings
 
 
-# Publishing only needs the non-expiring Page token and the Instagram user ID.
-# INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET are used once, by `exchange-token`.
+# Publishing only needs INSTAGRAM_ACCESS_TOKEN. With a long-lived user token the
+# Page token and Instagram user ID are looked up at publish time; INSTAGRAM_IG_USER_ID
+# is only needed when the token is already a Page token. INSTAGRAM_APP_ID /
+# INSTAGRAM_APP_SECRET are used once, by `exchange-token`.
 LIVE_PUBLISH_ENV = (
     "INSTAGRAM_ACCESS_TOKEN",
-    "INSTAGRAM_IG_USER_ID",
     "PUBLIC_MEDIA_BASE_URL",
 )
 
 # Turso is optional for GitHub Actions: the workflow carries SQLite state in the
 # Actions cache when Turso secrets are absent.
-GITHUB_AUTOMATION_ENV = (
-    "INSTAGRAM_ACCESS_TOKEN",
-    "INSTAGRAM_IG_USER_ID",
-)
+GITHUB_AUTOMATION_ENV = ("INSTAGRAM_ACCESS_TOKEN",)
 
 R2_ENV = (
     "R2_ACCOUNT_ID",
