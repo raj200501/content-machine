@@ -47,6 +47,17 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
             ignore_schedule=True,
             limit=publish_now,
         )
+        if results["publish_now"].get("missing_media", 0) > 0:
+            # A reel left "ready" by an earlier runner has no file here; it was
+            # re-queued, so render it on this runner and try once more.
+            results["render_now_retry"] = run_render_batch(db, settings, count=publish_now, run_date=current.date())
+            results["publish_now_retry"] = run_publish_batch(
+                db,
+                settings,
+                now=current,
+                ignore_schedule=True,
+                limit=publish_now,
+            )
         return results
 
     if render_due_only:
