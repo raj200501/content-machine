@@ -166,6 +166,10 @@ def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int
             top_pay = top["pay"][0] + top_pay
         options.append(f"This {top['company']} {role_word} lists up to {top_pay}.")
     hook = options[(day_ordinal + topic.slot_index) % len(options)]
+    if paid and (day_ordinal + topic.slot_index) % 3 != 2:
+        # Lead with the money most of the time: it is the most specific, most
+        # scroll-stopping first line. Keep a third of hooks on company names to test.
+        hook = options[-1]
     beats = [_job_line(job) for job in jobs]
     beats.append(JOB_ALERT_TIPS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_TIPS)])
     sub = {"interns": "Internships", "new grads": "New grad roles"}.get(audience, "Students & new grads")

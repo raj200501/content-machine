@@ -60,6 +60,9 @@ PALETTE = {
     "chip_bg": (241, 238, 252),
 }
 
+PUNCH_SECONDS = 0.35
+PUNCH_ZOOM = 0.12
+
 KICKERS = {
     "openings_job_alert": "JOB DROP",
     "application_strategy": "APPLICATION TIP",
@@ -425,6 +428,11 @@ def _draw_big_text(draw: ImageDraw.ImageDraw, scene: Scene, t: float) -> None:
     ascent, descent = face.getmetrics()
     for index, x, y in scene.layout:
         text = words[index].text
+        money = "$" in text or "£" in text or "€" in text
+        if money and not (index == active and index < len(words)):
+            # Pay is the most scroll-stopping detail: always in yellow.
+            draw.text((x, y), text, font=face, fill=PALETTE["highlight"])
+            continue
         if index == active and index < len(words):
             progress = _ease_out((t - words[index].start) / 0.09)
             pad = 10
@@ -488,6 +496,14 @@ def render_frame(background: Image.Image, scenes: list[Scene], scene: Scene, t: 
         _draw_big_text(draw, scene, t)
     else:
         _draw_caption_chunk(draw, scene, t)
+    if t < PUNCH_SECONDS:
+        # Punch-in: the opening frame starts 12% zoomed and snaps back, so the
+        # feed preview moves immediately instead of sitting still.
+        scale = 1 + PUNCH_ZOOM * (1 - _ease_out(t / PUNCH_SECONDS))
+        big = frame.resize((int(W * scale), int(H * scale)), Image.BILINEAR)
+        left = (big.size[0] - W) // 2
+        top = (big.size[1] - H) // 2
+        frame = big.crop((left, top, left + W, top + H))
     return frame.convert("RGB")
 
 
