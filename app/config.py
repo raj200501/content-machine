@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     enable_video_provider: bool = False
     enable_local_fallback: bool = True
     posts_per_day: int = 20
+    # Manual runs: render and publish this many of today's next reels immediately,
+    # ignoring their scheduled slots (0 = only publish what is due).
+    publish_now_count: int = 0
     batch_render_size: int = 20
     dry_run: bool = True
     log_level: str = "INFO"

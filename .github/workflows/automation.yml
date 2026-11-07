@@ -7,6 +7,10 @@ on:
     - cron: "5 2,3,12,13,19,20 * * *"
     - cron: "35 15,16,22,23 * * *"
   workflow_dispatch:
+    inputs:
+      publish_now:
+        description: "Reels to render and post right now (0 = only what is due)"
+        default: "1"
 
 concurrency:
   group: content-machine-automation
@@ -112,6 +116,7 @@ jobs:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           TIMEZONE: America/New_York
           POSTS_PER_DAY: "5"
+          PUBLISH_NOW_COUNT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_now || '0' }}
           BATCH_RENDER_SIZE: "5"
           DRY_RUN: "false"
           ENABLE_VIDEO_PROVIDER: "false"

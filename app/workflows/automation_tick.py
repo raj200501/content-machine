@@ -35,6 +35,20 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
         metrics = _metric_map(db, metric_date)
 
     render_due_only = settings.publish_ready and not settings.dry_run
+    publish_now = settings.publish_now_count if render_due_only else 0
+    if publish_now > 0:
+        # Manual "post now": render the next reels regardless of slot, then publish
+        # them immediately. Later slots keep their schedule.
+        results["render_now"] = run_render_batch(db, settings, count=publish_now, run_date=current.date())
+        results["publish_now"] = run_publish_batch(
+            db,
+            settings,
+            now=current,
+            ignore_schedule=True,
+            limit=publish_now,
+        )
+        return results
+
     if render_due_only:
         results["render_due"] = run_render_batch(
             db,
