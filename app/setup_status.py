@@ -16,13 +16,13 @@ LIVE_PUBLISH_ENV = (
     "PUBLIC_MEDIA_BASE_URL",
 )
 
+# Turso is optional for GitHub Actions: the workflow carries SQLite state in the
+# Actions cache when Turso secrets are absent.
 GITHUB_AUTOMATION_ENV = (
     "INSTAGRAM_ACCESS_TOKEN",
     "INSTAGRAM_IG_USER_ID",
     "INSTAGRAM_APP_ID",
     "INSTAGRAM_APP_SECRET",
-    "TURSO_DATABASE_URL",
-    "TURSO_AUTH_TOKEN",
 )
 
 R2_ENV = (
@@ -205,6 +205,26 @@ def build_setup_report(settings: Settings, *, check_binaries: bool = True) -> Se
             if settings.enable_local_fallback
             else "ENABLE_LOCAL_FALLBACK is false; renders require the provider",
             ("ENABLE_LOCAL_FALLBACK",),
+        )
+    )
+
+    from app.media.audio_tts import resolve_piper_model
+
+    voice_model = resolve_piper_model(settings)
+    has_system_tts = bool(which("say") or which("espeak-ng") or which("espeak"))
+    checks.append(
+        SetupCheck(
+            "video",
+            "voiceover",
+            "ok" if voice_model else ("fallback" if has_system_tts else "missing"),
+            f"Piper voice {voice_model.name}"
+            if voice_model
+            else (
+                "Using system TTS; run scripts/install_piper_voice.sh for a natural voice"
+                if has_system_tts
+                else "No voice installed, reels would be silent; run scripts/install_piper_voice.sh"
+            ),
+            ("PIPER_VOICE", "PIPER_MODEL_PATH"),
         )
     )
 

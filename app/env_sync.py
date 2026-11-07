@@ -40,3 +40,22 @@ def append_missing_env_values(env_path: Path, example_path: Path) -> tuple[str, 
         for key, value in missing:
             env_file.write(f"{key}={value}\n")
     return tuple(key for key, _value in missing)
+
+
+def set_env_values(env_path: Path, values: dict[str, str]) -> None:
+    """Set or replace KEY=value lines in env_path, keeping every other line as-is."""
+
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    remaining = dict(values)
+    updated: list[str] = []
+    for line in lines:
+        match = ENV_LINE_RE.match(line.strip())
+        if match and match.group(1) in remaining:
+            key = match.group(1)
+            updated.append(f"{key}={remaining.pop(key)}")
+        else:
+            updated.append(line)
+    for key, value in remaining.items():
+        updated.append(f"{key}={value}")
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(updated) + "\n", encoding="utf-8")

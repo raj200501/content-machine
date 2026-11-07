@@ -177,6 +177,43 @@ def instagram_accounts() -> None:
     console.print("Use the Instagram User ID value for INSTAGRAM_IG_USER_ID.")
 
 
+@app.command("exchange-token")
+def exchange_token(
+    write_env: bool = typer.Option(True, "--write-env/--no-write-env", help="Save results into .env"),
+    env_path: Path = typer.Option(Path(".env"), "--env-path"),
+) -> None:
+    """Turn a short-lived Graph API Explorer token into a non-expiring Page token."""
+
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    from app.env_sync import set_env_values
+    from app.publishing.instagram_meta import InstagramMetaPublisher
+
+    result = InstagramMetaPublisher(settings).exchange_for_long_lived_token()
+    if "page_token" not in result:
+        console.print(
+            "Got a long-lived user token, but no Facebook Page with a connected Instagram Professional account. "
+            "Connect Instagram to a Page, then rerun."
+        )
+        raise typer.Exit(1)
+    console.print(
+        f"Connected: @{result.get('username', '')} via Page '{result.get('page_name', '')}'. "
+        f"INSTAGRAM_IG_USER_ID={result['instagram_ig_user_id']}"
+    )
+    if write_env:
+        set_env_values(
+            env_path,
+            {
+                "INSTAGRAM_ACCESS_TOKEN": result["page_token"],
+                "INSTAGRAM_IG_USER_ID": result["instagram_ig_user_id"],
+            },
+        )
+        console.print(f"Saved the non-expiring Page token and IG user ID to {env_path} (values not printed).")
+        console.print("Copy the same two values into your GitHub Actions secrets.")
+    else:
+        console.print("Re-run with --write-env to save the values; tokens are never printed.")
+
+
 @app.command("refresh-sources")
 def refresh_sources() -> None:
     db, settings = _ctx()

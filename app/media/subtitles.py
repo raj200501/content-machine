@@ -49,3 +49,16 @@ def write_srt(script_text: str, output_path: Path, duration_seconds: float) -> P
         cursor += allocation
     output_path.write_text("\n".join(rows).strip() + "\n", encoding="utf-8")
     return output_path
+
+
+def write_line_srt(lines: list[str], durations: list[float], output_path: Path) -> Path:
+    """One cue per voiced line, timed from the real per-line audio durations."""
+
+    ensure_directory(output_path.parent)
+    cursor = 0.0
+    rows = []
+    for index, (line, duration) in enumerate(zip(lines, durations), start=1):
+        rows.append(f"{index}\n{_timestamp(cursor)} --> {_timestamp(cursor + duration)}\n{line}\n")
+        cursor += duration
+    output_path.write_text("\n".join(rows).strip() + "\n", encoding="utf-8")
+    return output_path

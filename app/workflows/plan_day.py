@@ -22,6 +22,7 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
     slots = day_schedule(target_date, settings)
     topics = build_daily_topics(target_date, slots, source_items, recent_scripts)
 
+    recent_hooks = {script["hook"] for script in recent_scripts}
     created = 0
     unsupported = 0
     for topic in topics:
@@ -41,7 +42,8 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
                 "metadata": topic.metadata,
             }
         )
-        package = build_script(topic, evidence_items)
+        package = build_script(topic, evidence_items, recent_hooks)
+        recent_hooks.add(package.hook)
         guarded = guard_script(package.full_script, evidence_items)
         fact_status = "passed" if guarded.passed else "softened"
         if not guarded.passed:

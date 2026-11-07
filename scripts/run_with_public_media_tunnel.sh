@@ -84,6 +84,20 @@ if [ -z "$public_url" ]; then
   exit 1
 fi
 
+# Quick tunnels need a few seconds before DNS and routing work. Wait until the
+# URL actually answers so Meta's first fetch of the video does not fail.
+ready=""
+for _ in $(seq 1 45); do
+  if curl -fsS -o /dev/null --max-time 5 "$public_url/"; then
+    ready="yes"
+    break
+  fi
+  sleep 2
+done
+if [ -z "$ready" ]; then
+  echo "Warning: $public_url did not answer yet; continuing anyway." >&2
+fi
+
 export PUBLIC_MEDIA_BASE_URL="$public_url"
 echo "Using temporary public media URL: $PUBLIC_MEDIA_BASE_URL"
 "$@"

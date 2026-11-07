@@ -20,7 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && secrets.INSTAGRAM_APP_ID != '' && secrets.INSTAGRAM_APP_SECRET != '' && secrets.TURSO_DATABASE_URL != '' && secrets.TURSO_AUTH_TOKEN != '' && 'true' || 'false' }}
+      # Only the four Instagram secrets are required. Turso is optional: without it,
+      # state (the SQLite DB) is carried between runs with the Actions cache.
+      AUTOMATION_READY: ${{ secrets.INSTAGRAM_ACCESS_TOKEN != '' && secrets.INSTAGRAM_IG_USER_ID != '' && secrets.INSTAGRAM_APP_ID != '' && secrets.INSTAGRAM_APP_SECRET != '' && 'true' || 'false' }}
+      USE_TURSO: ${{ secrets.TURSO_DATABASE_URL != '' && secrets.TURSO_AUTH_TOKEN != '' && 'true' || 'false' }}
+      PIPER_VOICE: en_US-lessac-medium
     steps:
       - name: Skip until required secrets exist
         if: env.AUTOMATION_READY != 'true'
@@ -78,6 +82,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Restore voice model
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: assets/voices
+          key: piper-voice-${{ env.PIPER_VOICE }}
+
+      - name: Download voice model if missing
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        run: ./scripts/install_piper_voice.sh "$PIPER_VOICE"
+
+      - name: Restore state database
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: output/content_machine.db
+          key: content-machine-state-${{ github.run_id }}
+          restore-keys: content-machine-state-
+
       - name: Run automation tick
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         env:
@@ -97,7 +120,24 @@ jobs:
           PUBLICATION_START_HOUR: "8"
           PUBLICATION_END_HOUR: "22"
           DELETE_STAGED_MEDIA_AFTER_PUBLISH: "true"
+          BRAND_HANDLE: ${{ vars.BRAND_HANDLE }}
           LOG_LEVEL: INFO
         run: |
           python -m app.cli init-db
           ./scripts/run_with_public_media_tunnel.sh python -m app.cli automation-tick
+
+      - name: Save state database
+        if: always() && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: output/content_machine.db
+          key: content-machine-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload rendered reels
+        if: always() && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reels-${{ github.run_id }}
+          path: output/rendered/**/*.mp4
+          retention-days: 3
+          if-no-files-found: ignore

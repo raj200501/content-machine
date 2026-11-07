@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = 25
     provider_timeout_seconds: int = 90
     max_source_items_per_ingest: int = 20
-    meta_graph_api_version: str = "v19.0"
+    meta_graph_api_version: str = "v24.0"
     public_media_base_url: str = ""
     user_agent: str = "content-machine/0.1 (+https://example.com/content-machine)"
     r2_account_id: str = ""
@@ -64,11 +64,14 @@ class Settings(BaseSettings):
     delete_staged_media_after_publish: bool = True
 
     piper_model_path: str = ""
-    piper_voice: str = ""
+    piper_voice: str = "en_US-lessac-medium"
+    piper_length_scale: float = 0.92
     macos_say_voice: str = "Samantha"
     linux_tts_voice: str = "en-us"
     enable_gtts_fallback: bool = False
     default_cta: str = "Follow for daily internship and new-grad reels."
+    brand_handle: str = ""
+    burn_subtitles: bool = False
 
     @field_validator("posts_per_day", "batch_render_size")
     @classmethod

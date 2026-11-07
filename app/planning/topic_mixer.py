@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import date
 from itertools import cycle
@@ -9,7 +10,7 @@ from itertools import cycle
 from app.models import PlannedTopic
 from app.planning.taxonomy import EVERGREEN_ANGLES, HOOK_STYLES, scaled_daily_buckets
 from app.source_ingest.source_ranker import infer_company
-from app.utils import chunked, json_loads, slugify
+from app.utils import json_loads, slugify
 
 
 def _select_hook(category: str, hook_counts: Counter[str]) -> str:
@@ -23,14 +24,53 @@ def _company_repeated(company: str, company_counts: Counter[str]) -> bool:
     return bool(company) and company_counts[company.lower()] >= 2
 
 
-def _job_groups(source_items: list[dict]) -> list[list[dict]]:
-    jobs = [
-        item
-        for item in source_items
-        if item["source_type"] == "job_board" or "internship" in (item["title"] + item["summary"]).lower()
-    ]
-    jobs.sort(key=lambda item: (item["freshness_score"], item["relevance_score"]), reverse=True)
-    return chunked(jobs[:18], 3)
+def item_company(item: dict) -> str:
+    """Best-effort company name: job boards know it exactly, news needs inference."""
+
+    metadata = json_loads(item.get("metadata_json"), default={}) or {}
+    if metadata.get("company"):
+        return str(metadata["company"])
+    return infer_company(item["title"], item["summary"]) or ""
+
+
+def _job_groups(source_items: list[dict], company_counts: Counter[str] | None = None) -> list[list[dict]]:
+    """Group real job-board postings into reels of three different companies.
+
+    News headlines are not postings, so they are never used for job alerts.
+    """
+
+    company_counts = company_counts or Counter()
+    jobs = [item for item in source_items if item["source_type"] == "job_board"]
+    # Fresh postings first, then companies we have featured least recently.
+    jobs.sort(
+        key=lambda item: (
+            # Most followers are undergrads; PhD-only roles go last.
+            bool(re.search(r"\bph\.?d\b", item["title"], re.I)),
+            -item["freshness_score"],
+            company_counts[item_company(item).lower()],
+            -item["relevance_score"],
+        )
+    )
+    by_company: dict[str, list[dict]] = defaultdict(list)
+    order: list[str] = []
+    for item in jobs:
+        company = item_company(item).lower()
+        if company not in by_company:
+            order.append(company)
+        by_company[company].append(item)
+
+    groups: list[list[dict]] = []
+    while True:
+        available = [company for company in order if by_company[company]]
+        if len(available) < 3:
+            break
+        group = [by_company[company].pop(0) for company in available[:3]]
+        # Rotate so the next reel starts with different companies.
+        order = order[3:] + order[:3]
+        groups.append(group)
+        if len(groups) >= 6:
+            break
+    return groups
 
 
 def _items_by_theme(source_items: list[dict]) -> dict[str, list[dict]]:
@@ -70,7 +110,7 @@ def build_daily_topics(
                 company_counts[company.lower()] += 1
 
     source_items = sorted(source_items, key=lambda item: (item["freshness_score"], item["relevance_score"]), reverse=True)
-    grouped_jobs = _job_groups(source_items)
+    grouped_jobs = _job_groups(source_items, company_counts)
     themed = _items_by_theme(source_items)
     evergreen_cursors = {name: cycle(values) for name, values in EVERGREEN_ANGLES.items()}
 
@@ -90,17 +130,11 @@ def build_daily_topics(
             metadata: dict[str, object] = {"kind": "evergreen"}
 
             if category == "openings_job_alert" and grouped_jobs:
-                group = grouped_jobs.pop(0)
-                chosen = []
-                for item in group:
-                    company_name = infer_company(item["title"], item["summary"]) or ""
-                    if _company_repeated(company_name, company_counts):
-                        continue
-                    chosen.append(item)
-                    if company_name:
-                        company_counts[company_name.lower()] += 1
+                chosen = grouped_jobs.pop(0)
+                for item in chosen:
+                    company_counts[item_company(item).lower()] += 1
                 if chosen:
-                    companies = [infer_company(item["title"], item["summary"]) or item["title"].split(" ")[0] for item in chosen]
+                    companies = [item_company(item) or item["title"].split(" ")[0] for item in chosen]
                     title = " / ".join(companies[:3])
                     angle = "Three live-looking internship or new-grad roles worth reviewing today."
                     company = companies[0]
@@ -112,7 +146,7 @@ def build_daily_topics(
                 while pool:
                     item = pool.pop(0)
                     themed[category] = pool
-                    company_name = infer_company(item["title"], item["summary"]) or ""
+                    company_name = item_company(item)
                     if _company_repeated(company_name, company_counts):
                         continue
                     company = company_name

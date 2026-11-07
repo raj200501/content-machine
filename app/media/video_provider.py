@@ -36,10 +36,10 @@ def render_with_fallback(settings: Settings, script_row: dict, output_root: Path
 
     ensure_directory(output_root)
     slug = slugify(f"{script_row['id']}-{hash_text(script_row['hook'])[:8]}")
-    provider_work = ensure_directory(output_root / slug)
     provider_error = None
 
     if settings.enable_video_provider and settings.hf_token:
+        provider_work = ensure_directory(output_root / slug)
         try:
             provider = HFProvider(settings)
             background_video = provider_work / "provider_visual.mp4"
@@ -82,6 +82,7 @@ def render_with_fallback(settings: Settings, script_row: dict, output_root: Path
         script_row["full_script"],
         output_root,
         prompt_hint=script_row["hook"],
+        category=script_row.get("category", "") or "",
     )
     if provider_error:
         artifact.metadata["provider_error"] = provider_error

@@ -36,32 +36,48 @@ def _ffmpeg_has_filter(ffmpeg_binary: str, filter_name: str) -> bool:
     return "Unknown filter" not in combined
 
 
-def create_scene_clip(ffmpeg_binary: str, image_path: Path, duration: float, output_path: Path) -> Path:
+def create_scene_clip(
+    ffmpeg_binary: str,
+    image_path: Path,
+    duration: float,
+    output_path: Path,
+    fade_in: bool = True,
+) -> Path:
+    """Turn a still card into a clip with a slow push-in so the frame never feels static."""
+
     ensure_directory(output_path.parent)
-    fade_out = max(duration - 0.20, 0.01)
-    frames = max(int(duration * 30), 1)
-    vf = (
-        "scale=1200:-2,"
-        f"zoompan=z='min(zoom+0.0008,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30,"
-        "format=yuv420p,"
-        "fade=t=in:st=0:d=0.20,"
-        f"fade=t=out:st={fade_out:.2f}:d=0.20"
-    )
+    fps = 30
+    frames = max(int(round(duration * fps)), 1)
+    zoom_step = 0.05 / frames  # ~5% push-in over the scene, independent of its length
+    filters = [
+        "scale=2160:-2",  # upscale first so zoompan stays smooth instead of jittery
+        f"zoompan=z='min(1+{zoom_step:.6f}*on,1.05)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+        f":d={frames}:s=1080x1920:fps={fps}",
+        "format=yuv420p",
+    ]
+    if fade_in:
+        filters.append("fade=t=in:st=0:d=0.25")
     run_command(
         [
             ffmpeg_binary,
             "-y",
             "-loop",
             "1",
+            "-framerate",
+            str(fps),
             "-i",
             str(image_path),
-            "-t",
-            f"{duration:.2f}",
+            "-frames:v",
+            str(frames),
             "-vf",
-            vf,
+            ",".join(filters),
             "-an",
             "-c:v",
             "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
             "-pix_fmt",
             "yuv420p",
             str(output_path),
@@ -93,53 +109,39 @@ def concat_clips(ffmpeg_binary: str, clips: list[Path], output_path: Path) -> Pa
 
 
 def mux_audio(ffmpeg_binary: str, video_path: Path, voice_path: Path, output_path: Path, music_path: Path | None = None) -> Path:
+    """Mix voice (and optional looped music bed) under the video. Video length wins."""
+
     ensure_directory(output_path.parent)
+    command = [ffmpeg_binary, "-y", "-i", str(video_path), "-i", str(voice_path)]
     if music_path and music_path.exists():
-        run_command(
-            [
-                ffmpeg_binary,
-                "-y",
-                "-i",
-                str(video_path),
-                "-i",
-                str(voice_path),
-                "-i",
-                str(music_path),
-                "-filter_complex",
-                "[2:a]volume=0.08[m];[1:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]",
-                "-map",
-                "0:v",
-                "-map",
-                "[a]",
-                "-c:v",
-                "copy",
-                "-c:a",
-                "aac",
-                "-shortest",
-                str(output_path),
-            ]
+        command += ["-stream_loop", "-1", "-i", str(music_path)]
+        audio_filter = (
+            "[2:a]volume=0.07,afade=t=in:d=1[m];"
+            "[1:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,apad[a]"
         )
     else:
-        run_command(
-            [
-                ffmpeg_binary,
-                "-y",
-                "-i",
-                str(video_path),
-                "-i",
-                str(voice_path),
-                "-map",
-                "0:v",
-                "-map",
-                "1:a",
-                "-c:v",
-                "copy",
-                "-c:a",
-                "aac",
-                "-shortest",
-                str(output_path),
-            ]
-        )
+        audio_filter = "[1:a]apad[a]"
+    command += [
+        "-filter_complex",
+        audio_filter,
+        "-map",
+        "0:v",
+        "-map",
+        "[a]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "48000",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    run_command(command)
     return output_path
 
 
@@ -160,7 +162,7 @@ def burn_subtitles(ffmpeg_binary: str, video_path: Path, subtitles_path: Path, o
             ffmpeg_binary,
             "-y",
             "-i",
-            str(video_path),
+            str(video_path.resolve()),
             "-vf",
             subtitle_filter,
             "-c:v",
@@ -169,7 +171,7 @@ def burn_subtitles(ffmpeg_binary: str, video_path: Path, subtitles_path: Path, o
             "medium",
             "-c:a",
             "copy",
-            str(output_path),
+            str(output_path.resolve()),
         ],
         cwd=subtitles_path.parent,
     )

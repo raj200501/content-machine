@@ -37,3 +37,32 @@ def test_local_reel_builder_creates_artifacts(tmp_path: Path) -> None:
     assert artifact.audio_path.exists()
     assert artifact.subtitle_path.exists()
     assert artifact.duration_seconds >= 10
+
+
+
+@pytest.mark.skipif(not (command_exists("ffmpeg") and command_exists("ffprobe")), reason="ffmpeg not installed")
+def test_local_reel_builder_works_with_relative_paths(tmp_path: Path, monkeypatch) -> None:
+    """Regression: default settings use relative output paths; subtitle burning used to break them."""
+
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(
+        output_dir=Path("output"),
+        assets_dir=Path("assets"),
+        database_path=Path("db.sqlite"),
+        media_staging_dir=Path("output/published/staged"),
+        turso_database_url="",
+        turso_auth_token="",
+        burn_subtitles=True,
+    )
+    settings.ensure_directories()
+    script = "\n".join(
+        [
+            "Three resume fixes before internship season.",
+            "Start every bullet with a strong verb like built or shipped.",
+            "Add a number to each one, like users or time saved.",
+            "Save this and send it to a friend who's applying.",
+        ]
+    )
+    artifact = LocalFallbackReelBuilder(settings).render(7, script, Path("output/rendered/today"), category="resume_portfolio")
+    assert artifact.video_path.exists()
+    assert artifact.subtitle_path.read_text().count("-->") == 4

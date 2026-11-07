@@ -17,3 +17,5 @@ output/published/staged/*
 !output/rendered/.gitkeep
 !output/published/.gitkeep
 !output/logs/.gitkeep
+assets/voices/*.onnx
+assets/voices/*.onnx.json

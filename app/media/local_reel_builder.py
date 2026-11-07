@@ -5,27 +5,36 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import Settings
-from app.media.audio_tts import synthesize_audio
+from app.media.audio_tts import synthesize_lines
 from app.media.compositor import burn_subtitles, concat_clips, create_scene_clip, mux_audio
-from app.media.subtitles import write_srt
+from app.media.subtitles import write_line_srt
 from app.models import RenderArtifact
 from app.utils import ensure_directory, hash_text, slugify
 
+INTRO_HOLD_SECONDS = 0.35
+
 
 class LocalFallbackReelBuilder:
-    """Build a vertical MP4 reel with text cards, voiceover, and captions."""
+    """Build a vertical MP4 reel: one voiced line per scene card, cut exactly on the voice."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
     def _music_path(self) -> Path | None:
         for pattern in ("*.mp3", "*.wav", "*.m4a"):
-            matches = list((self.settings.assets_dir / "music").glob(pattern))
+            matches = sorted((self.settings.assets_dir / "music").glob(pattern))
             if matches:
                 return matches[0]
         return None
 
-    def render(self, script_id: int, script_text: str, output_root: Path, prompt_hint: str = "") -> RenderArtifact:
+    def render(
+        self,
+        script_id: int,
+        script_text: str,
+        output_root: Path,
+        prompt_hint: str = "",
+        category: str = "",
+    ) -> RenderArtifact:
         try:
             from app.media.image_scene_builder import build_scene_image
         except ModuleNotFoundError as exc:  # pragma: no cover - requires missing Pillow.
@@ -34,10 +43,12 @@ class LocalFallbackReelBuilder:
         slug = slugify(f"{script_id}-{hash_text(script_text)[:10]}")
         work_dir = ensure_directory(output_root / slug)
         final_path = output_root / f"{slug}.mp4"
-        audio_path, duration_seconds, engine = synthesize_audio(script_text, work_dir, "voiceover", self.settings)
-        subtitle_path = write_srt(script_text, work_dir / "captions.srt", duration_seconds)
         scene_texts = [line.strip() for line in script_text.splitlines() if line.strip()]
-        total_words = sum(max(len(text.split()), 1) for text in scene_texts)
+        audio_path, duration_seconds, engine, line_durations = synthesize_lines(
+            scene_texts, work_dir, "voiceover", self.settings
+        )
+        subtitle_path = write_line_srt(scene_texts, line_durations, work_dir / "captions.srt")
+        palette_index = int(hash_text(script_text)[:6], 16)
         scene_clips: list[Path] = []
 
         for index, text in enumerate(scene_texts):
@@ -47,13 +58,19 @@ class LocalFallbackReelBuilder:
                 index,
                 self.settings,
                 prompt_hint=prompt_hint if index == 0 else "",
+                total_scenes=len(scene_texts),
+                category=category,
+                palette_index=palette_index,
             )
-            allocation = max(duration_seconds * (max(len(text.split()), 1) / max(total_words, 1)), 2.0)
+            allocation = line_durations[index]
+            if index == len(scene_texts) - 1:
+                allocation += INTRO_HOLD_SECONDS  # let the last card breathe before the loop
             clip_path = create_scene_clip(
                 self.settings.ffmpeg_binary,
                 image_path,
                 allocation,
                 work_dir / f"scene_{index:02d}.mp4",
+                fade_in=index == 0,
             )
             scene_clips.append(clip_path)
 
@@ -65,7 +82,10 @@ class LocalFallbackReelBuilder:
             work_dir / "with_audio.mp4",
             self._music_path(),
         )
-        burn_subtitles(self.settings.ffmpeg_binary, mixed_video, subtitle_path, final_path)
+        if self.settings.burn_subtitles:
+            burn_subtitles(self.settings.ffmpeg_binary, mixed_video, subtitle_path, final_path)
+        else:
+            mixed_video.replace(final_path)
         return RenderArtifact(
             script_id=script_id,
             provider="local_fallback",

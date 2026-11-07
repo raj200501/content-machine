@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 
 import requests
@@ -17,13 +18,62 @@ LOG = logging.getLogger(__name__)
 
 DEFAULT_FILTERS = ["intern", "internship", "new grad", "graduate", "early career", "university"]
 
+# Role families this account covers. A posting must match one of these to be
+# used, which keeps accounting / audit / sales internships out of tech reels.
+TECH_ROLE_PATTERN = re.compile(
+    r"\b(software|engineer(?:ing)?|developer|swe|sde|backend|back-end|frontend|front-end|full[- ]?stack|"
+    r"data|machine learning|ml|ai|research|scientist|security|infrastructure|platform|mobile|ios|android|"
+    r"product manag\w*|apm|product design\w*|designer|ux|site reliability|sre|devops|cloud|systems|quant\w*|"
+    r"analytics|hardware|firmware|robotics)\b",
+    re.IGNORECASE,
+)
+SENIORITY_PATTERN = re.compile(r"\b(senior|staff|principal|lead|manager|director|head of|sr\.?)\b", re.IGNORECASE)
+NON_TECH_PATTERN = re.compile(
+    r"\b(audit|accounting|accountant|tax|legal|counsel|sales|marketing|recruit\w*|talent|payroll|controllership|"
+    r"high school|financial analyst|account development)\b",
+    re.IGNORECASE,
+)
+
+
+def _filter_pattern(term: str) -> re.Pattern[str]:
+    # Word-boundary match so "intern" does not match "internal" / "international".
+    escaped = re.escape(term.strip().lower()).replace(r"\ ", r"[\s-]+")
+    return re.compile(rf"\b{escaped}(s|ship|ships)?\b", re.IGNORECASE)
+
 
 def _wanted(title: str, filters: list[str]) -> bool:
-    lowered = title.lower()
-    return any(term.lower() in lowered for term in (filters or DEFAULT_FILTERS))
+    if not any(_filter_pattern(term).search(title) for term in (filters or DEFAULT_FILTERS)):
+        return False
+    if SENIORITY_PATTERN.search(title) or NON_TECH_PATTERN.search(title):
+        return False
+    return bool(TECH_ROLE_PATTERN.search(title))
 
 
-def _build_candidate(source: SourceDefinition, url: str, title: str, text: str, published_at: str | None) -> SourceItemCandidate | None:
+def _company_name(source: SourceDefinition) -> str:
+    company = str(source.metadata.get("company", "")).strip()
+    if company:
+        return company
+    return source.name.split("-")[0].replace("_", " ").title()
+
+
+def _clean_location(location: str) -> str:
+    location = re.sub(r"\s+", " ", location or "").strip(" ;,")
+    if not location:
+        return ""
+    parts = [part.strip() for part in re.split(r"[;|]", location) if part.strip()]
+    if len(parts) > 2:
+        return f"{parts[0]} and {len(parts) - 1} more locations"
+    return " or ".join(parts)
+
+
+def _build_candidate(
+    source: SourceDefinition,
+    url: str,
+    title: str,
+    text: str,
+    published_at: str | None,
+    location: str = "",
+) -> SourceItemCandidate | None:
     relevance = score_relevance(title, text)
     if relevance < 10:
         return None
@@ -41,7 +91,13 @@ def _build_candidate(source: SourceDefinition, url: str, title: str, text: str, 
         freshness_score=freshness_score(published_at),
         relevance_score=relevance,
         duplicate_hash=duplicate_hash(title, text),
-        metadata={"board_type": source.board_type, "board": source.name},
+        metadata={
+            "board_type": source.board_type,
+            "board": source.name,
+            "company": _company_name(source),
+            "location": _clean_location(location),
+            "job_title": title.strip(),
+        },
     )
 
 
@@ -50,16 +106,21 @@ def _greenhouse(source: SourceDefinition, settings: Settings) -> list[SourceItem
     response.raise_for_status()
     payload = response.json()
     items: list[SourceItemCandidate] = []
-    for job in payload.get("jobs", [])[: min(source.max_items, settings.max_source_items_per_ingest)]:
-        title = job.get("title", "")
+    limit = min(source.max_items, settings.max_source_items_per_ingest)
+    # Filter first, then cap: large boards list hundreds of roles and the
+    # early-career ones are rarely in the first page.
+    for job in payload.get("jobs", []):
+        title = (job.get("title") or "").strip()
         if not _wanted(title, source.filters):
             continue
         url = job.get("absolute_url") or source.url
-        location = job.get("location", {}).get("name", "")
-        text = f"{title}. {location}. Public Greenhouse listing."
-        candidate = _build_candidate(source, url, title, text, job.get("updated_at"))
+        location = (job.get("location") or {}).get("name", "")
+        text = f"{title}. {_company_name(source)}. {location}. Public Greenhouse listing."
+        candidate = _build_candidate(source, url, title, text, job.get("first_published") or job.get("updated_at"), location)
         if candidate:
             items.append(candidate)
+        if len(items) >= limit:
+            break
     return items
 
 
@@ -67,16 +128,22 @@ def _lever(source: SourceDefinition, settings: Settings) -> list[SourceItemCandi
     response = requests.get(source.url, timeout=settings.request_timeout_seconds, headers={"User-Agent": settings.user_agent})
     response.raise_for_status()
     items: list[SourceItemCandidate] = []
-    for job in response.json()[: min(source.max_items, settings.max_source_items_per_ingest)]:
-        title = job.get("text", "")
+    limit = min(source.max_items, settings.max_source_items_per_ingest)
+    for job in response.json():
+        title = (job.get("text") or "").strip()
         if not _wanted(title, source.filters):
             continue
         location = (job.get("categories") or {}).get("location", "")
         url = job.get("hostedUrl") or source.url
-        text = f"{title}. {location}. Public Lever listing."
-        candidate = _build_candidate(source, url, title, text, job.get("createdAt"))
+        text = f"{title}. {_company_name(source)}. {location}. Public Lever listing."
+        created = job.get("createdAt")
+        if isinstance(created, (int, float)):
+            created = datetime.utcfromtimestamp(created / 1000).isoformat()
+        candidate = _build_candidate(source, url, title, text, created, location)
         if candidate:
             items.append(candidate)
+        if len(items) >= limit:
+            break
     return items
 
 

@@ -2,106 +2,164 @@
 
 from __future__ import annotations
 
+import re
+from datetime import date
 from itertools import cycle
 
 from app.models import CaptionPackage, PlannedTopic, ScriptPackage
+from app.utils import json_loads
 from app.writing.caption_writer import build_caption
-from app.writing.prompt_templates import SCRIPT_CTAS
+from app.writing.prompt_templates import JOB_ALERT_HOOKS, JOB_ALERT_TIPS, SCRIPT_CTAS
+from app.writing.script_packs import pick_pack
 
 CTA_CYCLE = cycle(SCRIPT_CTAS)
+ORDINALS = ["First,", "Next,", "And"]
+COUNT_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five"}
+
+
+def _metadata(item: dict) -> dict:
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        return metadata
+    return json_loads(item.get("metadata_json"), default={}) or {}
+
+
+def clean_headline(title: str) -> str:
+    """Drop the trailing ' - Publisher' that Google News appends to every title."""
+
+    cleaned = re.sub(r"\s+[-–|]\s+[^-–|]{2,80}$", "", title or "").strip()
+    return cleaned or (title or "").strip()
 
 
 def _company(item: dict) -> str:
-    return item.get("company") or item.get("title", "").split(" ")[0]
+    metadata = _metadata(item)
+    if metadata.get("company"):
+        return str(metadata["company"])
+    if item.get("company"):
+        return str(item["company"])
+    return ""
 
 
-def _job_alert_beats(evidence_items: list[dict]) -> list[str]:
-    beats = []
-    for item in evidence_items[:3]:
-        beats.append(f"{_company(item)} has a public posting that looks worth checking.")
-    beats.append("Match your resume keywords to the role family before you apply.")
-    return beats[:4]
+def spoken_job_title(title: str) -> tuple[str, str]:
+    """Return a speakable title plus an audience note.
+
+    'PhD Intern, Software Engineer - Graphics (2027)' -> ('Software Engineer Intern', 'for PhD students')
+    """
+
+    raw = title or ""
+    audience = ""
+    if re.search(r"\bph\.?d\b", raw, re.I):
+        audience = "for PhD students"
+    elif re.search(r"\bmaster'?s\b", raw, re.I):
+        audience = "for master's students"
+    new_grad = bool(re.search(r"\b(new grad|university grad\w*|graduate)\b", raw, re.I)) and not re.search(r"\bintern", raw, re.I)
+
+    spoken = re.sub(r"[\[(][^\])]*[\])]", " ", raw)
+    spoken = re.sub(r"^\s*\d{4}\s*[-–:]\s*", "", spoken)
+    spoken = re.sub(r"\s+[-–]\s+.*$", "", spoken)
+    spoken = re.sub(r"\b(19|20)\d{2}\b", " ", spoken)
+    spoken = re.sub(r"\b(ph\.?d|master'?s|new grad|university grad\w*)\b", " ", spoken, flags=re.I)
+    spoken = re.sub(r"\b(Summer|Fall|Spring|Winter)\b", " ", spoken, flags=re.I)
+    spoken = re.sub(r"\s+", " ", spoken).strip(" ,-–")
+    # "Intern, Software Engineer" -> "Software Engineer Intern"
+    match = re.match(r"^(intern(?:ship)?)\s*,\s*(.+)$", spoken, re.I)
+    if match:
+        spoken = f"{match.group(2)} {match.group(1)}"
+    # "Machine Learning Engineer, Intern" -> "Machine Learning Engineer Intern"
+    spoken = re.sub(r",\s*(intern(?:ship)?)\b", r" \1", spoken, flags=re.I)
+    spoken = re.sub(r"\binternship\b", "Intern", spoken, flags=re.I)
+    spoken = re.sub(r"\s*,\s*", ", ", spoken)
+    spoken = re.sub(r"\s+", " ", spoken).strip(" ,-–")
+    if new_grad and spoken:
+        spoken = f"new grad {spoken}"
+    return (spoken or raw.strip()), audience
 
 
-def _strategy_beats(topic: PlannedTopic, evidence_items: list[dict]) -> list[str]:
-    if evidence_items:
-        item = evidence_items[0]
-        return [
-            f"Students miss replies when every application sounds the same.",
-            f"{item.get('summary', topic.angle)[:90].rstrip('.')}.",
-            "Tighten your resume, recruiter note, and project story around one role family.",
-            "That usually beats blasting another fifty cold applications.",
-        ]
-    return [
-        "A generic resume makes every application feel lower signal.",
-        topic.angle,
-        "Batch similar roles together so your materials stay consistent.",
-        "That keeps your follow-up cleaner too.",
-    ]
+def spoken_location(location: str) -> str:
+    if not location:
+        return ""
+    first = re.split(r"\s+or\s+|\s+and\s+\d+\s+more|•|;|/", location)[0]
+    first = re.sub(r"\b(Hybrid|Remote|In-Office)\s*-\s*", "", first, flags=re.I)
+    first = re.sub(r"\s+-\s+.*$", "", first.split(",")[0]).strip()
+    if first.lower() in {"in-office", "hybrid", "remote", ""}:
+        return ""
+    return first
 
 
-def _interview_beats(topic: PlannedTopic, evidence_items: list[dict]) -> list[str]:
-    source = evidence_items[0]["summary"] if evidence_items else topic.angle
-    return [
-        "Most students overpractice questions and underpractice explanations.",
-        source[:95].rstrip(".") + ".",
-        "Say your tradeoffs out loud, then end with what you'd improve next.",
-        "That makes even imperfect answers sound more hireable.",
-    ]
+def _job_line(index: int, item: dict) -> str:
+    metadata = _metadata(item)
+    company = _company(item) or "One company"
+    title, audience = spoken_job_title(metadata.get("job_title") or item.get("title", ""))
+    location = spoken_location(metadata.get("location", ""))
+    lead = ORDINALS[index] if index < len(ORDINALS) else "Also,"
+    if location and title.lower().endswith(", " + location.lower()):
+        title = title[: -(len(location) + 2)]
+    where = f" in {location}" if location else ""
+    who = f", {audience}" if audience else ""
+    article = "an" if title[:1].lower() in "aeiou" else "a"
+    return f"{lead} {company} is hiring {article} {title}{where}{who}."
 
 
-def _resume_beats(topic: PlannedTopic, evidence_items: list[dict]) -> list[str]:
-    source = evidence_items[0]["summary"] if evidence_items else topic.angle
-    return [
-        "If your resume reads like coursework only, it will blur together.",
-        source[:95].rstrip(".") + ".",
-        "Lead with shipped work, measurable impact, and tools next to results.",
-        "Then pin two repos that prove the story.",
-    ]
+def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int) -> tuple[str, list[str]]:
+    jobs = evidence_items[:3]
+    hook = JOB_ALERT_HOOKS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_HOOKS)].format(
+        count=COUNT_WORDS.get(len(jobs) or 3, "These"),
+        count_lower=COUNT_WORDS.get(len(jobs) or 3, "these").lower(),
+    )
+    beats = [_job_line(index, item) for index, item in enumerate(jobs)]
+    beats.append(JOB_ALERT_TIPS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_TIPS)])
+    return hook, beats
 
 
-def _market_beats(topic: PlannedTopic, evidence_items: list[dict]) -> list[str]:
-    source = evidence_items[0]["summary"] if evidence_items else topic.angle
-    return [
-        "The market is mixed, not hopeless.",
-        source[:100].rstrip(".") + ".",
-        "Wider role coverage matters right now: SWE, data, ML, PM, and adjacent analyst roles.",
-        "Treat this like a process problem, not a personal verdict.",
-    ]
+def _market_from_headline(topic: PlannedTopic, evidence_items: list[dict]) -> tuple[str, list[str]] | None:
+    if not evidence_items:
+        return None
+    headline = clean_headline(evidence_items[0].get("title", ""))
+    words = headline.split()
+    if not headline or len(words) < 4 or len(words) > 18:
+        return None
+    return (
+        "Hiring news students should know.",
+        [
+            f"Headline: {headline}" + ("" if headline[-1] in ".?!" else "."),
+            "News like this shows where early-career hiring is actually moving.",
+            "Use it to widen your search, and check the company's own careers page for live roles.",
+        ],
+    )
 
 
-def _motivation_beats(topic: PlannedTopic) -> list[str]:
-    return [
-        "You do not need a perfect resume week to get momentum back.",
-        topic.angle,
-        "Pick one role family, one project bullet fix, and one follow-up today.",
-        "Tiny consistency beats panic every time.",
-    ]
-
-
-def build_script(topic: PlannedTopic, evidence_items: list[dict]) -> ScriptPackage:
+def build_script(
+    topic: PlannedTopic,
+    evidence_items: list[dict],
+    recent_hooks: set[str] | None = None,
+) -> ScriptPackage:
     cta = next(CTA_CYCLE)
-    if topic.category == "openings_job_alert":
-        hook = "Three early-career tech roles worth checking today."
-        beats = _job_alert_beats(evidence_items)
-    elif topic.category == "application_strategy":
-        hook = topic.hook_style.capitalize() + "."
-        beats = _strategy_beats(topic, evidence_items)
-    elif topic.category == "interview_prep":
-        hook = topic.hook_style.capitalize() + "."
-        beats = _interview_beats(topic, evidence_items)
-    elif topic.category == "resume_portfolio":
-        hook = topic.hook_style.capitalize() + "."
-        beats = _resume_beats(topic, evidence_items)
+    try:
+        day_ordinal = date.fromisoformat(topic.day).toordinal()
+    except ValueError:
+        day_ordinal = 0
+
+    hook = ""
+    beats: list[str] = []
+    if topic.category == "openings_job_alert" and evidence_items:
+        hook, beats = _job_alert(topic, evidence_items, day_ordinal)
     elif topic.category == "market_context":
-        hook = topic.hook_style.capitalize() + "."
-        beats = _market_beats(topic, evidence_items)
-    else:
-        hook = topic.hook_style.capitalize() + "."
-        beats = _motivation_beats(topic)
+        sourced = _market_from_headline(topic, evidence_items)
+        if sourced:
+            hook, beats = sourced
+
+    if not beats:
+        category = topic.category if topic.category != "openings_job_alert" else "application_strategy"
+        pack = pick_pack(category, day_ordinal, topic.slot_index, recent_hooks)
+        if pack:
+            hook = str(pack["hook"])
+            beats = list(pack["beats"])  # type: ignore[arg-type]
+        else:
+            hook = topic.hook_style[:1].upper() + topic.hook_style[1:] + "."
+            beats = [topic.angle or "Pick one small, concrete step and do it today."]
 
     full_script = "\n".join([hook, *beats[:4], cta])
-    caption: CaptionPackage = build_caption(topic, beats, evidence_items, cta)
+    caption: CaptionPackage = build_caption(topic, hook, beats, evidence_items, cta)
     evidence = [
         {
             "title": item.get("title", ""),

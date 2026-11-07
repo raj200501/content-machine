@@ -22,6 +22,10 @@ def _load_boto3():
     return boto3
 
 
+class MetaAPIError(RuntimeError):
+    """A non-retryable 4xx response from the Graph API."""
+
+
 class InstagramMetaPublisher:
     """Publish reels through the official Content Publishing API."""
 
@@ -46,8 +50,57 @@ class InstagramMetaPublisher:
             timeout=self.settings.request_timeout_seconds,
             **kwargs,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # Surface Meta's error message (never the token) instead of a bare HTTP code.
+            try:
+                error = response.json().get("error", {})
+                detail = f"{error.get('type', '')} {error.get('code', '')}: {error.get('message', '')}".strip()
+            except ValueError:
+                detail = response.text[:300]
+            if response.status_code < 500:
+                raise MetaAPIError(f"Meta API {response.status_code} on {path.split('?')[0]}: {detail}")
+            response.raise_for_status()
         return response.json()
+
+    def exchange_for_long_lived_token(self, short_lived_token: str | None = None) -> dict[str, str]:
+        """Swap a short-lived Graph API Explorer token for long-lived credentials.
+
+        Returns the 60-day user token and, for each connected Page, a Page token.
+        Page tokens minted from a long-lived user token do not expire, which makes
+        them the right value for unattended GitHub Actions publishing.
+        """
+
+        token = short_lived_token or self.settings.instagram_access_token
+        if not (token and self.settings.instagram_app_id and self.settings.instagram_app_secret):
+            raise RuntimeError("INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET are required")
+        data = self._request(
+            "GET",
+            "oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": self.settings.instagram_app_id,
+                "client_secret": self.settings.instagram_app_secret,
+                "fb_exchange_token": token,
+            },
+        )
+        long_lived = str(data["access_token"])
+        pages = self._request(
+            "GET",
+            "me/accounts",
+            params={
+                "fields": "id,name,access_token,instagram_business_account{id,username}",
+                "access_token": long_lived,
+            },
+        )
+        result = {"user_token": long_lived}
+        for page in pages.get("data", []):
+            instagram = page.get("instagram_business_account") or {}
+            if instagram.get("id") and page.get("access_token"):
+                result.setdefault("page_token", str(page["access_token"]))
+                result.setdefault("instagram_ig_user_id", str(instagram["id"]))
+                result.setdefault("username", str(instagram.get("username", "")))
+                result.setdefault("page_name", str(page.get("name", "")))
+        return result
 
     def _object_key(self, staged_name: str) -> str:
         return f"reels/{staged_name}"

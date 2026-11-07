@@ -151,3 +151,61 @@ def test_instagram_meta_discovers_connected_accounts(monkeypatch, tmp_path: Path
             "account_type": "BUSINESS",
         }
     ]
+
+
+def test_exchange_for_long_lived_token_returns_page_token(monkeypatch, tmp_path: Path) -> None:
+    settings = Settings(
+        instagram_access_token="short",
+        instagram_app_id="app",
+        instagram_app_secret="secret",
+        output_dir=tmp_path / "output",
+        assets_dir=tmp_path / "assets",
+        database_path=tmp_path / "db.sqlite",
+        turso_database_url="",
+        turso_auth_token="",
+    )
+    publisher = InstagramMetaPublisher(settings)
+
+    def fake_request(method: str, url: str, timeout: int, **kwargs):
+        if url.endswith("/oauth/access_token"):
+            assert kwargs["params"]["fb_exchange_token"] == "short"
+            return DummyResponse({"access_token": "long"})
+        if url.endswith("/me/accounts"):
+            assert kwargs["params"]["access_token"] == "long"
+            return DummyResponse(
+                {
+                    "data": [
+                        {"id": "p0", "name": "No IG", "access_token": "nope"},
+                        {
+                            "id": "p1",
+                            "name": "Page",
+                            "access_token": "page-token",
+                            "instagram_business_account": {"id": "ig1", "username": "handle"},
+                        },
+                    ]
+                }
+            )
+        raise AssertionError(url)
+
+    monkeypatch.setattr(publisher.session, "request", fake_request)
+    result = publisher.exchange_for_long_lived_token()
+    assert result["page_token"] == "page-token"
+    assert result["instagram_ig_user_id"] == "ig1"
+
+
+def test_meta_errors_include_message(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+
+    from app.publishing.instagram_meta import MetaAPIError
+
+    settings = Settings(instagram_access_token="t", instagram_ig_user_id="1", turso_database_url="", turso_auth_token="")
+    publisher = InstagramMetaPublisher(settings)
+
+    class ErrorResponse(DummyResponse):
+        def __init__(self) -> None:
+            super().__init__({"error": {"type": "OAuthException", "code": 190, "message": "Token expired"}})
+            self.status_code = 400
+
+    monkeypatch.setattr(publisher.session, "request", lambda *a, **k: ErrorResponse())
+    with pytest.raises(MetaAPIError, match="Token expired"):
+        publisher.create_media_container("https://x/y.mp4", "c")

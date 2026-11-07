@@ -7,7 +7,7 @@ The default design is free-tier-first:
 - Public RSS, news, careers pages, public job boards, and optional public YouTube transcripts.
 - SQLite for local state, with optional Turso/libSQL cloud sync.
 - FFmpeg for deterministic rendering.
-- Local-first TTS with `piper`, macOS `say`, or `espeak`, with a last-resort silent fallback.
+- Natural local voiceover with Piper (free, MIT-licensed voice downloaded by `scripts/install_piper_voice.sh`), then macOS `say` or `espeak`, with a last-resort silent fallback.
 - Hugging Face is optional and best-effort. If quota fails or the provider errors, the local reel builder still produces publishable vertical MP4 reels.
 
 ## What It Does
@@ -72,7 +72,7 @@ cp .env.example .env
 ./scripts/bootstrap.sh
 ```
 
-For exact free-only dashboard instructions to finish Instagram, local media tunneling, optional R2, Turso, Hugging Face, and GitHub setup, use [FINISH_REPO.md](/Users/rajkashikar/content-machine/FINISH_REPO.md).
+For exact free-only dashboard instructions to finish Instagram, local media tunneling, optional R2, Turso, Hugging Face, and GitHub setup, use [FINISH_REPO.md](FINISH_REPO.md).
 
 That script:
 
@@ -223,7 +223,7 @@ If Hugging Face is unavailable, the system automatically falls back to the local
 
 ## Source Definitions
 
-Starter source definitions live in [app/source_ingest/source_definitions.json](/Users/rajkashikar/content-machine/app/source_ingest/source_definitions.json).
+Starter source definitions live in [app/source_ingest/source_definitions.json](app/source_ingest/source_definitions.json).
 
 The file includes examples for:
 
@@ -253,7 +253,13 @@ Add any missing `.env.example` keys to your local `.env` without overwriting exi
 python -m app.cli sync-env
 ```
 
-After `INSTAGRAM_ACCESS_TOKEN` is set, verify the connected Meta Page and Instagram Professional account:
+After pasting a short-lived Graph API Explorer token into `INSTAGRAM_ACCESS_TOKEN` (plus app ID and secret), swap it for a non-expiring Page token and save it with the IG user ID into `.env`:
+
+```bash
+python -m app.cli exchange-token
+```
+
+Verify the connected Meta Page and Instagram Professional account:
 
 ```bash
 python -m app.cli instagram-accounts
@@ -343,12 +349,14 @@ This repository is private, so standard Linux GitHub-hosted runners consume incl
 
 Add these GitHub Actions secrets before expecting live posting:
 
-- `INSTAGRAM_ACCESS_TOKEN`
+- `INSTAGRAM_ACCESS_TOKEN` (use the non-expiring Page token from `python -m app.cli exchange-token`)
 - `INSTAGRAM_IG_USER_ID`
 - `INSTAGRAM_APP_ID`
 - `INSTAGRAM_APP_SECRET`
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
+
+`TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` are optional. Without them the workflow keeps its SQLite state between runs in the GitHub Actions cache. Optionally add a repository variable `BRAND_HANDLE` (for example `@yourhandle`) to print your handle on every reel.
+
+Every run also uploads its rendered MP4s as a workflow artifact (kept 3 days) so you can review what was posted.
 
 Do not add `HF_TOKEN` for the strict-free setup. R2 and `PUBLIC_MEDIA_BASE_URL` are not required for the scheduled GitHub workflow because the workflow creates a temporary public media tunnel per run.
 
@@ -365,12 +373,12 @@ The rendering path is intentionally resilient:
 1. Try Hugging Face video generation if `ENABLE_VIDEO_PROVIDER=true` and `HF_TOKEN` exists.
 2. If the provider errors, times out, or quota is unavailable, switch to the local fallback renderer.
 3. The local renderer still produces:
-   - `1080x1920` MP4
-   - voiceover audio
-   - burned subtitles
-   - animated text cards
-   - subtle zoom / motion
-   - optional low-volume music
+   - `1080x1920` H.264/AAC MP4 inside Instagram's Reels safe zone
+   - a Piper voiceover, voiced line by line and loudness-normalized
+   - one bold scene card per spoken line, cut exactly on the voice, so the cards double as captions
+   - job-alert cards that show company, role, and city, plus a progress bar and optional handle
+   - subtle push-in motion
+   - optional low-volume music from `assets/music`
 
 This means the repo remains valuable even when external AI generation is sparse.
 
@@ -440,9 +448,9 @@ In dry run mode:
 
 Edit:
 
-- [app/source_ingest/source_definitions.json](/Users/rajkashikar/content-machine/app/source_ingest/source_definitions.json)
-- [app/planning/taxonomy.py](/Users/rajkashikar/content-machine/app/planning/taxonomy.py)
-- [app/writing/script_writer.py](/Users/rajkashikar/content-machine/app/writing/script_writer.py)
+- [app/source_ingest/source_definitions.json](app/source_ingest/source_definitions.json)
+- [app/planning/taxonomy.py](app/planning/taxonomy.py)
+- [app/writing/script_writer.py](app/writing/script_writer.py)
 - `.env`
 
 You can shift the pipeline toward:
