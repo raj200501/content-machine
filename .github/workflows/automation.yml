@@ -3,9 +3,9 @@ name: content-machine-automation
 on:
   schedule:
     # GitHub's scheduler often fires late or skips runs, so this tries every
-    # hour from about 7am to 11pm New York time (UTC hours below) and the app
+    # 15 minutes from about 7am to 11pm New York time (UTC hours below); the app
     # decides what is due. Runs with nothing to do exit after a quick check.
-    - cron: "23 0-4,11-23 * * *"
+    - cron: "7,22,37,52 0-4,11-23 * * *"
   workflow_dispatch:
     inputs:
       publish_now:
