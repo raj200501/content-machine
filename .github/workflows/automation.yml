@@ -2,10 +2,10 @@ name: content-machine-automation
 
 on:
   schedule:
-    # GitHub cron is UTC. These cover the five New York publish windows in
-    # both daylight and standard time; the first live run also refreshes/plans.
-    - cron: "5 2,3,12,13,19,20 * * *"
-    - cron: "35 15,16,22,23 * * *"
+    # GitHub's scheduler often fires late or skips runs, so this tries every
+    # hour from about 7am to 11pm New York time (UTC hours below) and the app
+    # decides what is due. Runs with nothing to do exit after a quick check.
+    - cron: "23 0-4,11-23 * * *"
   workflow_dispatch:
     inputs:
       publish_now:
@@ -34,7 +34,19 @@ jobs:
         if: env.AUTOMATION_READY != 'true'
         run: echo "Required GitHub Actions secrets are still missing. Skipping automation run."
 
-      - name: Check publish window
+      - name: Check out repository
+        if: env.AUTOMATION_READY == 'true'
+        uses: actions/checkout@v4
+
+      - name: Restore state database
+        if: env.AUTOMATION_READY == 'true' && env.USE_TURSO != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: output/content_machine.db
+          key: content-machine-state-${{ github.run_id }}
+          restore-keys: content-machine-state-
+
+      - name: Anything to do?
         id: window
         if: env.AUTOMATION_READY == 'true'
         env:
@@ -42,22 +54,10 @@ jobs:
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "Manual run."
+          else
+            python3 scripts/needs_work.py output/content_machine.db
           fi
-          local_time="$(TZ=America/New_York date +%H:%M)"
-          case "$local_time" in
-            08:*|11:3*|15:*|18:3*|22:*)
-              echo "run=true" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "run=false" >> "$GITHUB_OUTPUT"
-              echo "Outside publish window: $local_time America/New_York"
-              ;;
-          esac
-
-      - name: Check out repository
-        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
-        uses: actions/checkout@v4
 
       - name: Set up Python
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
@@ -98,14 +98,6 @@ jobs:
         run: |
           ./scripts/install_kokoro.sh
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || echo "Piper fallback voice unavailable; Kokoro will be used."
-
-      - name: Restore state database
-        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: output/content_machine.db
-          key: content-machine-state-${{ github.run_id }}
-          restore-keys: content-machine-state-
 
       - name: Run automation tick
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'

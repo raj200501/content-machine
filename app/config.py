@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     music_bed: bool = True
     music_bed_volume_db: float = -24.0
     render_fps: int = 30
+    # Scheduled runs: GitHub cron fires late or not at all, so the app decides
+    # what to post. At most one post per run, spaced out, never overnight, and
+    # anything more than stale_after_hours overdue is dropped.
+    posting_start: str = "07:30"
+    posting_end: str = "23:30"
+    min_publish_gap_minutes: int = 100
+    stale_after_hours: int = 12
     # Disclose the synthetic voice (Meta's AI-content labeling policy).
     label_ai_generated: bool = True
     # Trial Reels (non-followers first) unlock around 200 followers on professional accounts.

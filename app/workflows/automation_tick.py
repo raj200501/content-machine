@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 
 from app.config import Settings
 from app.db import Database
@@ -19,6 +19,29 @@ def _metric_map(db: Database, metric_date: str) -> dict[str, float]:
 
 def _time_reached(now: datetime, target: time) -> bool:
     return now.timetz().replace(tzinfo=None) >= target
+
+
+def _clock(value: str) -> time:
+    hour, minute = value.split(":")
+    return time(int(hour), int(minute))
+
+
+def _hold_reason(db: Database, settings: Settings, current: datetime) -> str | None:
+    local = current.timetz().replace(tzinfo=None)
+    if not (_clock(settings.posting_start) <= local <= _clock(settings.posting_end)):
+        return f"outside posting hours ({settings.posting_start}-{settings.posting_end})"
+    last = db.last_live_publish_at()
+    if last:
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            gap = current - last_dt
+            if gap < timedelta(minutes=settings.min_publish_gap_minutes):
+                return f"last post was {int(gap.total_seconds() // 60)} minutes ago"
+        except ValueError:
+            pass
+    return None
 
 
 def run_automation_tick(db: Database, settings: Settings, *, now: datetime | None = None) -> dict[str, dict]:
@@ -47,6 +70,7 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
     if publish_now > 0:
         # Manual "post now": render the next reels regardless of slot, then publish
         # them immediately. Later slots keep their schedule.
+        results["expired"] = db.expire_stale(current - timedelta(hours=settings.stale_after_hours))
         results["render_now"] = run_render_batch(db, settings, count=publish_now, run_date=current.date())
         results["publish_now"] = run_publish_batch(
             db,
@@ -69,13 +93,27 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
         return results
 
     if render_due_only:
+        # Live scheduled run: post at most one due reel, spaced out, in daytime.
+        results["expired"] = db.expire_stale(current - timedelta(hours=settings.stale_after_hours))
+        reason = _hold_reason(db, settings, current)
+        if reason:
+            results["publish"] = {"published": 0, "held": reason}
+            return results
         results["render_due"] = run_render_batch(
             db,
             settings,
-            count=settings.batch_render_size,
+            count=1,
             run_date=current.date(),
             scheduled_before=current.isoformat(),
         )
+        publish = run_publish_batch(db, settings, now=current, limit=1)
+        results["publish"] = publish
+        if publish.get("missing_media", 0) > 0 and not publish.get("published"):
+            results["render_missing"] = run_render_batch(
+                db, settings, count=1, run_date=current.date(), scheduled_before=current.isoformat()
+            )
+            results["publish_retry"] = run_publish_batch(db, settings, now=current, limit=1)
+        return results
     elif metrics.get("renders_succeeded", 0) < settings.posts_per_day and _time_reached(current, time(1, 0)):
         results["render"] = run_render_batch(db, settings, count=settings.batch_render_size, run_date=current.date())
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -685,6 +687,46 @@ class Database:
                     json_dumps(metadata),
                 ),
             )
+
+    def last_live_publish_at(self) -> str | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT published_at FROM published_posts
+                WHERE instagram_media_id NOT LIKE 'dryrun%'
+                ORDER BY published_at DESC LIMIT 1
+                """
+            ).fetchone()
+        return row[0] if row else None
+
+    def expire_stale(self, cutoff: datetime) -> dict[str, int]:
+        """Retire planned scripts and ready posts whose slot passed long ago.
+
+        GitHub's scheduler can skip or delay runs for hours; without this a
+        backlog would be posted in a burst (or at odd hours) later.
+        """
+
+        expired = {"scripts": 0, "publish_jobs": 0}
+        with self.connect() as conn:
+            for table, statuses, key in (
+                ("scripts", ("planned", "render_failed"), "scripts"),
+                ("publish_jobs", ("ready",), "publish_jobs"),
+            ):
+                marks = ", ".join("?" for _ in statuses)
+                rows = conn.execute(
+                    f"SELECT id, scheduled_at FROM {table} WHERE status IN ({marks})", statuses
+                ).fetchall()
+                for row_id, scheduled_at in rows:
+                    try:
+                        when = datetime.fromisoformat(str(scheduled_at))
+                    except ValueError:
+                        continue
+                    if when.tzinfo is None:
+                        when = when.replace(tzinfo=timezone.utc)
+                    if when < cutoff:
+                        conn.execute(f"UPDATE {table} SET status = 'expired' WHERE id = ?", (row_id,))
+                        expired[key] += 1
+        return expired
 
     def posts_for_insights(self, days: int = 14) -> list[dict[str, Any]]:
         with self.connect() as conn:
