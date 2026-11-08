@@ -26,6 +26,9 @@ def test_publish_now_renders_and_publishes_immediately(monkeypatch, tmp_path) ->
         def count_scripts_for_day(self, _day):
             return 5
 
+        def expire_stale(self, _cutoff):
+            return {"scripts": 0, "publish_jobs": 0}
+
     monkeypatch.setattr(
         automation_tick,
         "run_render_batch",
