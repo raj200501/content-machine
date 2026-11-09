@@ -102,6 +102,29 @@ class PageCapture:
     pay_rects: list[tuple[float, float, float, float]] | None = None  # one box per line
 
 
+def _find_pay_in_frames(page, needles: list[str], found: dict) -> None:
+    """Many careers sites embed the Greenhouse posting in an iframe; look for the pay there."""
+
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            sub = frame.evaluate(FIND_JS, needles)
+            if not sub.get("pay"):
+                continue
+            box = frame.frame_element().bounding_box()
+            if not box:
+                continue
+            scroll_y = page.evaluate("window.scrollY")
+            dx, dy = box["x"], box["y"] + scroll_y
+            move = lambda r: [r[0] + dx, r[1] + dy, r[2], r[3]]  # noqa: E731
+            found["pay"] = move(sub["pay"])
+            found["pay_rects"] = [move(r) for r in sub.get("pay_rects") or []]
+            return
+        except Exception as exc:  # detached or blocked frame
+            LOG.debug("Frame search failed: %s", str(exc)[:120])
+
+
 def _stitch(parts: list[Path], out: Path) -> None:
     from PIL import Image
 
@@ -194,7 +217,10 @@ def _capture_one(context, job: dict, path: Path, timeout_ms: int) -> PageCapture
             pass
         page.add_style_tag(content=HIDE_OVERLAYS)
         page.wait_for_timeout(600)
-        found = page.evaluate(FIND_JS, pay_needles(job.get("pay", "")))
+        needles = pay_needles(job.get("pay", ""))
+        found = page.evaluate(FIND_JS, needles)
+        if needles and not found.get("pay"):
+            _find_pay_in_frames(page, needles, found)
         title = found.get("title")
         text = page.inner_text("body")[:4000].lower()
         flags = ("verify you are human", "access denied", "page not found", "no longer accepting")
