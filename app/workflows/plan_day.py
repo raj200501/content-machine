@@ -59,7 +59,9 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         from app.planning.format_planner import DayPlanner
         from app.planning.topic_mixer import open_postings
 
-        planner = DayPlanner(open_postings(source_items, recent_scripts, target_date), recent_hook_ids, target_date, source_items)
+        planner = DayPlanner(
+            open_postings(source_items, recent_scripts, target_date), recent_hook_ids, target_date, source_items, hook_performance
+        )
     # Generated vs hand-written: start even, then follow which earns more.
     share = generated_share(db)
     chooser = random.Random(target_date.toordinal())

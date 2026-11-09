@@ -162,6 +162,6 @@ class Market:
 
 
 def market(all_records: list[JobRecord]) -> Market:
-    intern = [hourly(r.pay) for r in all_records if r.pay and r.usd and r.level == "intern"]
+    intern = [hourly(r.pay) for r in all_records if r.pay and r.usd and r.level == "intern" and r.pay.unit != "year"]
     grad = [annual(r.pay) for r in all_records if r.pay and r.usd and r.level == "new_grad"]
     return Market(intern, grad)

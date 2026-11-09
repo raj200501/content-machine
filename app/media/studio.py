@@ -90,6 +90,29 @@ def wrap_chars(text: str, face, max_width: int) -> list[str]:
     return lines
 
 
+def wrap_words_then_chars(text: str, face, max_width: int) -> list[str]:
+    """Wrap at spaces where possible; break long tokens (URLs) anywhere.
+    Keeps every character (including spaces) so highlight offsets still line up."""
+
+    if " " not in text:
+        return wrap_chars(text, face, max_width)
+    lines, current = [], ""
+    for token in re.findall(r"\S+\s*", text):
+        if face.getlength(current + token.rstrip()) <= max_width or not current:
+            if face.getlength(token.rstrip()) > max_width and not current:
+                parts = wrap_chars(token, face, max_width)
+                lines.extend(parts[:-1])
+                current = parts[-1]
+            else:
+                current += token
+        else:
+            lines.append(current)
+            current = token
+    if current:
+        lines.append(current)
+    return lines
+
+
 def fit_font(text: str, max_width: int, start: int, minimum: int, weight: int = 900):
     size = start
     while size > minimum and font(size, weight).getlength(text) > max_width:
@@ -804,7 +827,7 @@ def scene_hack(frame: Image.Image, shot: Shot, u: float) -> None:
         else:
             shown = after[: int(len(after) * typed)] if position == 2 else after
             highlight_from = 0
-    lines = wrap_chars(shown or " ", face, 800)
+    lines = wrap_words_then_chars(shown or " ", face, 800)
     ascent, descent = face.getmetrics()
     box_height = len(lines) * (ascent + descent + 8) + 70
     overlay, draw = layer()

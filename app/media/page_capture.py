@@ -35,6 +35,28 @@ HIDE_OVERLAYS = """
 html, body { overflow: visible !important; }
 """
 
+# Remove cookie/consent dialogs and anything pinned over the page (fixed or sticky
+# bars, chat widgets). Full-page screenshots otherwise paint them mid-page.
+REMOVE_OVERLAYS_JS = r"""
+() => {
+  const consent = /(cookie|consent|privacy|gdpr|onetrust|truste|osano|didomi|usercentrics|cmp)/i;
+  let removed = 0;
+  for (const el of Array.from(document.querySelectorAll('body *'))) {
+    const style = getComputedStyle(el);
+    const label = `${el.id} ${el.className && el.className.baseVal === undefined ? el.className : ''} ${el.getAttribute('aria-label') || ''}`;
+    const pinned = style.position === 'fixed' || style.position === 'sticky';
+    if ((pinned && el.tagName !== 'HTML') || (consent.test(label) && /dialog|banner|modal|overlay|popup|notice/i.test(label + ' ' + (el.getAttribute('role') || '')))) {
+      if (el.querySelector('h1') && !consent.test(label)) continue;  // never remove the job title
+      el.remove();
+      removed += 1;
+    }
+  }
+  document.documentElement.style.overflow = 'visible';
+  document.body.style.overflow = 'visible';
+  return removed;
+}
+"""
+
 FIND_JS = r"""
 (needles) => {
   const out = {height: Math.min(document.documentElement.scrollHeight, 20000), title: null, pay: null};
@@ -240,6 +262,10 @@ def _capture_one(context, job: dict, path: Path, timeout_ms: int) -> PageCapture
         except Exception:
             pass
         page.add_style_tag(content=HIDE_OVERLAYS)
+        try:
+            page.evaluate(REMOVE_OVERLAYS_JS)
+        except Exception:
+            pass
         page.wait_for_timeout(600)
         needles = pay_needles(job.get("pay", ""))
         found = page.evaluate(FIND_JS, needles)

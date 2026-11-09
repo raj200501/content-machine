@@ -109,6 +109,7 @@ def eligibility(job: JobRecord) -> str:
 def screen_location(location: str) -> str:
     loc = re.sub(r",?\s*(United States|USA|US)$", "", location or "").strip()
     loc = loc.split(";")[0].split("|")[0].strip()
+    loc = re.sub(r"\s*-\s*[A-Z]{2,4}\d*$", "", loc)  # office codes like "San Francisco - SF9"
     return re.sub(r"\s*,\s*", ", ", loc)
 
 
@@ -120,7 +121,7 @@ def spoken_location(location: str) -> str:
         return ""
     if loc.lower().startswith("remote"):
         return "remote"
-    city = loc.split(",")[0].strip()
+    city = re.split(r",| - ", loc)[0].strip()
     return {"NYC": "New York", "SF": "San Francisco"}.get(city, city)
 
 
@@ -163,6 +164,23 @@ def _pct_phrase(pct: float, count: int, level: str) -> str | None:
     return f"That range is right around the median of the {count} {pool} I track."
 
 
+def rankable(job: JobRecord) -> bool:
+    """Pay we can rank fairly. Intern postings that list a yearly salary usually show the
+    full-time range, so they stay out of pay rankings and comparisons."""
+
+    if not job.pay or not job.usd:
+        return False
+    return not (job.level == "intern" and job.pay.unit == "year")
+
+
+def list_pay(job: JobRecord) -> str:
+    """Pay as shown in ranked lists: hourly for interns (monthly stipends converted)."""
+
+    if job.level == "intern" and job.pay and job.pay.unit == "month":
+        return f"~${job.top_pay:.0f}/hr"
+    return job.pay_headline()
+
+
 # ----------------------------------------------------------------- formats --
 
 
@@ -179,7 +197,7 @@ def job_alert(job: JobRecord, market: Market, rng: random.Random) -> FormatScrip
     scenes = [_job_scene(job, "alert_hook", badge="JUST POSTED" if fresh else "STILL OPEN")]
     lines.append(rng.choice(["That's straight from their job posting.", "Here's the posting, pay range and all."]))
     scenes.append(_job_scene(job, "proof"))
-    compared = market.compare(job)
+    compared = market.compare(job) if rankable(job) else None
     if compared:
         pct, count = compared
         phrase = _pct_phrase(pct, count, job.level)
@@ -220,7 +238,7 @@ def countdown(jobs: list[JobRecord], market: Market, rng: random.Random) -> Form
     for level in ("intern", "new_grad"):
         best: dict[str, JobRecord] = {}
         for job in jobs:
-            if job.level == level and job.pay and job.usd:
+            if job.level == level and rankable(job):
                 if job.company not in best or job.top_pay > best[job.company].top_pay:
                     best[job.company] = job
         if len(best) >= 4:
@@ -232,33 +250,37 @@ def countdown(jobs: list[JobRecord], market: Market, rng: random.Random) -> Form
     n = len(picks)
     top = picks[-1]
     level_word = "internships" if picks[0].level == "intern" else "new grad roles"
-    floor = picks[0].pay_headline()
+    floor_value = picks[0].top_pay
+    if picks[0].level == "intern":
+        floor = f"${int(floor_value // 5 * 5)}+/hr"
+    else:
+        floor = f"${int(floor_value // 10000 * 10)}K+"
     hook = rng.choice(
         [
-            f"{n} {level_word} still hiring right now. Number one pays {top.pay_headline()}.",
-            f"{n} tech {level_word} paying up to {floor} or more, still open. Wait for number one.",
+            f"{n} {level_word} still hiring right now. Number one pays {list_pay(top)}.",
+            f"{n} {level_word} still hiring that pay {floor}. Wait for number one.",
         ]
     )
     variant = "top_pay" if "Number one" in hook else "wait"
     lines = [hook]
-    scenes = [{"kind": "countdown_intro", "n": n, "top": top.pay_headline(), "level": level_word,
+    scenes = [{"kind": "countdown_intro", "n": n, "top": list_pay(top), "level": level_word,
                "companies": [j.company for j in picks]}]
     words = {5: "five", 4: "four", 3: "three", 2: "two", 1: "one"}
     for rank, job in zip(range(n, 0, -1), picks):
         if rank == 1:
-            line = f"And number one: {job.company}, up to {job.pay_headline()} for {short_role(job)}s."
+            line = f"And number one: {job.company}, up to {list_pay(job)} for {short_role(job)}s."
             compared = market.compare(job)
             if compared and compared[0] >= 25:
                 line += f" That's {round(compared[0])}% above the median."
         else:
-            line = f"Number {words[rank]}: {job.company}, up to {job.pay_headline()}."
+            line = f"Number {words[rank]}: {job.company}, up to {list_pay(job)}."
         lines.append(line)
-        scenes.append(_job_scene(job, "countdown_item", rank=rank, n=n, max_pay=top.top_pay, top_pay_value=job.top_pay))
+        scenes.append(_job_scene(job, "countdown_item", rank=rank, n=n, max_pay=top.top_pay, top_pay_value=job.top_pay, pay=list_pay(job)))
     lines.append(f"Every apply link is in my bio. {rng.choice(['Save this before they close.', 'Save this, then send it to a friend.'])}")
     scenes.append({"kind": "cta", "company": top.company, "url": top.url, "alt_url": top.alt_url})
     caption = _caption_for_jobs(
         list(reversed(picks)),
-        f"{n} tech {level_word} still hiring, ranked by listed pay. #1: {top.company} at up to {top.pay_headline()}",
+        f"{n} tech {level_word} still hiring, ranked by listed pay. #1: {top.company} at up to {list_pay(top)}",
         "Which one are you applying to?",
     )
     return FormatScript("countdown", variant, lines, scenes, caption, HASHTAGS["job"][:4], list(reversed(picks)))
@@ -268,7 +290,7 @@ TIERS = [("S", 60, None), ("A", 50, 60), ("B", 40, 50), ("C", 0, 40)]
 
 
 def pay_tiers(jobs: list[JobRecord], rng: random.Random) -> FormatScript | None:
-    interns = [j for j in jobs if j.level == "intern" and j.pay and j.usd]
+    interns = [j for j in jobs if j.level == "intern" and rankable(j)]
     best: dict[str, JobRecord] = {}
     for job in interns:
         if job.company not in best or job.top_pay > best[job.company].top_pay:
@@ -302,11 +324,7 @@ def pay_tiers(jobs: list[JobRecord], rng: random.Random) -> FormatScript | None:
 
 def _tier_row(row) -> dict:
     name, low, high, members = row
-    def shown(job: JobRecord) -> str:
-        # Monthly stipends are shown as their hourly equivalent so tiers compare like with like.
-        return f"~${job.top_pay:.0f}/hr" if job.pay and job.pay.unit != "hour" else job.pay_headline()
-
-    return {"tier": name, "members": [{"company": m.company, "pay": shown(m), "url": m.url} for m in members]}
+    return {"tier": name, "members": [{"company": m.company, "pay": list_pay(m), "url": m.url} for m in members]}
 
 
 def redline(index: int, rng: random.Random) -> FormatScript:
@@ -372,10 +390,11 @@ def chat(index: int, rng: random.Random) -> FormatScript:
 
 def hack(index: int, rng: random.Random) -> FormatScript:
     item = HACKS[index % len(HACKS)]
+    appended = item["after"].startswith(item["before"])
     lines = [
         item["hook"],
         "Search the usual way first.",
-        "Now add this to the end.",
+        "Now add this to the end." if appended else "Now search it like this instead.",
         item["explain"],
         item["why"],
         f"Try it tonight. {rng.choice(CTA_SEND)}",

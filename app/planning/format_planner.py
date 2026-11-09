@@ -40,20 +40,32 @@ def _recent_uses(recent_hook_ids: list[str], fmt: str) -> dict[int, int]:
     return uses
 
 
-def pick_item(fmt: str, recent_hook_ids: list[str], rng: random.Random) -> tuple[int, bool]:
-    """(index, fresh) for a library format. fresh=False means everything ran recently."""
+def pick_item(fmt: str, recent_hook_ids: list[str], rng: random.Random, performance: dict[str, float] | None = None) -> tuple[int, bool]:
+    """(index, fresh) for a library format. fresh=False means everything ran recently.
+
+    Among items not used recently, ones that earned more saves/shares/watch time
+    on earlier runs are more likely to come back."""
 
     size = LIBRARY_SIZE[fmt]
     uses = _recent_uses(recent_hook_ids, fmt)
     unused = [index for index in range(size) if index not in uses]
     if unused:
-        return rng.choice(unused), True
+        weights = [(performance or {}).get(f"fmt:{fmt}:{index}", 1.0) for index in unused]
+        return rng.choices(unused, weights=weights, k=1)[0], True
     oldest = max(uses.items(), key=lambda item: item[1])[0]
     return oldest, uses[oldest] > 60  # 60 scripts ago is about 12 days at 5/day
 
 
 class DayPlanner:
-    def __init__(self, open_items: list[dict], recent_hook_ids: list[str], run_date: date, all_items: list[dict] | None = None):
+    def __init__(
+        self,
+        open_items: list[dict],
+        recent_hook_ids: list[str],
+        run_date: date,
+        all_items: list[dict] | None = None,
+        performance: dict[str, float] | None = None,
+    ):
+        self.performance = performance or {}
         self.jobs: list[JobRecord] = [job for job in records(open_items) if job.level in {"intern", "new_grad"}]
         # Market numbers come from every posting we have seen in 30 days, not just unused ones.
         self.market: Market = market([job for job in records(all_items or open_items) if job.level in {"intern", "new_grad"}])
@@ -74,7 +86,7 @@ class DayPlanner:
     def job_format(self) -> FormatScript | None:
         available = self._available()
         slot, self.job_slot = self.job_slot, self.job_slot + 1
-        paid = [job for job in available if job.pay and job.usd]
+        paid = [job for job in available if formats.rankable(job)]
         if slot % 2 == 1:
             if self.run_date.weekday() == 5:
                 tiers = formats.pay_tiers(available, self.rng)
@@ -102,10 +114,10 @@ class DayPlanner:
             fmt = "chat"
         if not fmt:
             return None
-        index, fresh = pick_item(fmt, self.recent_hook_ids, self.rng)
+        index, fresh = pick_item(fmt, self.recent_hook_ids, self.rng, self.performance)
         if not fresh:
             for alternative in ("chat", "redline", "hack"):
-                alt_index, alt_fresh = pick_item(alternative, self.recent_hook_ids, self.rng)
+                alt_index, alt_fresh = pick_item(alternative, self.recent_hook_ids, self.rng, self.performance)
                 if alt_fresh:
                     fmt, index = alternative, alt_index
                     break
