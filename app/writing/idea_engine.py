@@ -204,7 +204,7 @@ def _local_server(llm_dir: Path):
     env = {**os.environ, "LD_LIBRARY_PATH": f"{binary.parent}:{os.environ.get('LD_LIBRARY_PATH', '')}"}
     process = subprocess.Popen(
         [str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", "6144",
-         "-t", str(os.cpu_count() or 2), "--no-webui"],
+         "-t", str(os.cpu_count() or 2)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         env=env,

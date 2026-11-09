@@ -10,9 +10,15 @@ mkdir -p "$DIR"
 
 if [ ! -x "$DIR/bin/llama-server" ]; then
   tmp=$(mktemp -d)
-  # Prebuilt CPU build from the official llama.cpp releases.
-  gh release download -R ggml-org/llama.cpp --pattern '*bin-ubuntu-x64.zip' -D "$tmp"
-  unzip -q "$tmp"/*.zip -d "$tmp/unzipped"
+  # Prebuilt CPU build from the official llama.cpp releases: a pinned build that
+  # is known to work, else the newest build that has a plain Linux x64 archive.
+  if ! gh release download "${LLAMA_TAG:-b11669}" -R ggml-org/llama.cpp --pattern 'llama-*-bin-ubuntu-x64.tar.gz' -D "$tmp"; then
+    tag=$(gh api 'repos/ggml-org/llama.cpp/releases?per_page=20' \
+      --jq '[.[] | select(any(.assets[]; .name | test("-bin-ubuntu-x64\\.tar\\.gz$")))][0].tag_name')
+    gh release download "$tag" -R ggml-org/llama.cpp --pattern 'llama-*-bin-ubuntu-x64.tar.gz' -D "$tmp"
+  fi
+  mkdir -p "$tmp/unzipped"
+  tar -xzf "$tmp"/llama-*-bin-ubuntu-x64.tar.gz -C "$tmp/unzipped"
   server=$(find "$tmp/unzipped" -type f -name llama-server | head -1)
   if [ -z "$server" ]; then echo "llama-server not found in the release zip" >&2; exit 1; fi
   rm -rf "$DIR/bin" && mkdir -p "$DIR/bin"
