@@ -115,3 +115,31 @@ def category_weights(db: Database, min_posts: int = 3) -> dict[str, float]:
     if average <= 0:
         return {}
     return {category: max(0.6, min(1.6, score / average)) for category, score in scores.items()}
+
+
+def hook_weights(db: Database, min_posts: int = 2) -> dict[str, float]:
+    """Multipliers (0.5 to 1.8) per hook template, from how its reels performed."""
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT json_extract(s.metadata_json, '$.hook_id') AS hook_id,
+                   COUNT(*) AS posts, SUM(i.reach) AS reach, SUM(i.shares) AS shares,
+                   SUM(i.saved) AS saved, SUM(i.likes) AS likes, AVG(i.skip_rate) AS skip_rate
+            FROM post_insights i JOIN scripts s ON s.id = i.script_id
+            GROUP BY hook_id
+            """
+        ).fetchall()
+    scores: dict[str, float] = {}
+    for hook_id, posts, reach, shares, saved, likes, skip_rate in rows:
+        if not hook_id or (posts or 0) < min_posts or not reach:
+            continue
+        engagement = (3 * (shares or 0) + 2 * (saved or 0) + (likes or 0)) / reach
+        held = 1 - (skip_rate or 90) / 100  # share of viewers who stayed past 3 seconds
+        scores[hook_id] = engagement + held
+    if len(scores) < 2:
+        return {}
+    average = sum(scores.values()) / len(scores)
+    if average <= 0:
+        return {}
+    return {hook_id: max(0.5, min(1.8, score / average)) for hook_id, score in scores.items()}

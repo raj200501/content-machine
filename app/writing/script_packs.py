@@ -10,7 +10,7 @@ from __future__ import annotations
 SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
     "application_strategy": [
         {
-            "hook": "This is why you're not hearing back.",
+            "hook": "Your resume isn't the problem. Your keywords are.",
             "beats": [
                 "Your resume says software engineer, but the job says data platform intern.",
                 "Copy three exact phrases from the posting into your bullets, only where they're true.",
@@ -18,7 +18,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Stop sending a hundred cold applications.",
+            "hook": "Stop sending a hundred applications. Send twenty.",
             "beats": [
                 "Pick one role family this week, like backend, data, or mobile.",
                 "Tailor one resume for it, then apply to twenty roles in that family.",
@@ -26,7 +26,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Apply in the first week a posting goes live.",
+            "hook": "Applying in week three? You're already late.",
             "beats": [
                 "Big tech internship pipelines fill on a rolling basis.",
                 "Set alerts on company career pages and check them twice a week.",
@@ -34,7 +34,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Don't send this recruiter message.",
+            "hook": "Recruiters ignore this message. Send this instead.",
             "beats": [
                 "Hi, I'm interested in any open roles. That gets ignored.",
                 "Instead, name the exact role, one project that fits it, and one question.",
@@ -42,7 +42,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "The referral ask that actually works.",
+            "hook": "Never ask a stranger for a referral like this.",
             "beats": [
                 "Don't ask a stranger for a referral in the first message.",
                 "Ask one question about their team, then thank them when they reply.",
@@ -50,7 +50,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Track your applications like a project.",
+            "hook": "Zero replies? Your tracker will tell you why.",
             "beats": [
                 "Keep a sheet with company, role, date applied, and contact.",
                 "Follow up once after ten business days if you have a contact.",
@@ -58,7 +58,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Your cover letter is probably too long.",
+            "hook": "Recruiters read two lines of your cover letter.",
             "beats": [
                 "Most early-career recruiters read the first two lines, if anything.",
                 "Line one: the role and why this team. Line two: your most relevant project.",
@@ -66,7 +66,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Don't ignore smaller companies.",
+            "hook": "Everyone applies to the same ten companies. Don't.",
             "beats": [
                 "Everyone applies to the same ten famous names.",
                 "Series B to D startups hire interns with fewer applicants per seat.",
@@ -76,7 +76,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
     ],
     "interview_prep": [
         {
-            "hook": "Technical interview fix in twenty seconds.",
+            "hook": "Never start coding the second they stop talking.",
             "beats": [
                 "Before writing code, repeat the problem back and ask about edge cases.",
                 "Say your brute force first, then explain how you'd optimize it.",
@@ -84,7 +84,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "The behavioral answer mistake students keep making.",
+            "hook": "You're answering behavioral questions backwards.",
             "beats": [
                 "They spend forty seconds on background and five on what they did.",
                 "Flip it. One line of context, then your actions, then the result.",
@@ -92,7 +92,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Online assessment prep if you're short on time.",
+            "hook": "Online assessment this week? Study only these.",
             "beats": [
                 "Focus on arrays, hash maps, two pointers, and sliding window first.",
                 "Those patterns cover a big share of early-career assessments.",
@@ -100,7 +100,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Stuck in a coding interview? Say this.",
+            "hook": "Stuck in a coding interview? Say this sentence.",
             "beats": [
                 "Let me try a small example to see the pattern.",
                 "Walking through an example out loud often unlocks the approach.",
@@ -108,7 +108,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "How to explain your project in an interview.",
+            "hook": "Stop explaining your project with the tech stack.",
             "beats": [
                 "Start with the problem it solved, not the tech stack.",
                 "Then one hard decision you made and the tradeoff behind it.",
@@ -116,7 +116,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Questions to ask at the end of your interview.",
+            "hook": "Ask this when they say: any questions for us?",
             "beats": [
                 "What does a great intern accomplish in the first month here?",
                 "What's the hardest problem the team is working on right now?",
@@ -124,7 +124,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Big O without the panic.",
+            "hook": "Say this after every solution. Interviewers notice.",
             "beats": [
                 "After every solution, state the time and space complexity unprompted.",
                 "If you loop inside a loop, say why and whether a hash map fixes it.",
@@ -132,7 +132,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Mock interviews are the cheat code.",
+            "hook": "Practicing LeetCode alone hides your biggest weakness.",
             "beats": [
                 "Practicing alone hides the hardest part, which is talking while coding.",
                 "Trade mock interviews with a friend once a week, forty-five minutes each.",
@@ -142,7 +142,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
     ],
     "resume_portfolio": [
         {
-            "hook": "Three resume fixes before internship season.",
+            "hook": "Three resume fixes before you apply anywhere.",
             "beats": [
                 "Start every bullet with a strong verb like built, shipped, or reduced.",
                 "Add a number to each one: users, speed, accuracy, or time saved.",
@@ -150,7 +150,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "No internships yet? Do this instead.",
+            "hook": "No internships yet? Put this at the top.",
             "beats": [
                 "Build one project that real people use, even ten classmates.",
                 "Users, feedback, and fixes give you bullets that read like experience.",
@@ -158,7 +158,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Your GitHub is doing you no favors.",
+            "hook": "Recruiters click your GitHub once. Fix this first.",
             "beats": [
                 "Pin your three best repos and archive the tutorial clones.",
                 "Each pinned repo needs a README with a screenshot and how to run it.",
@@ -166,7 +166,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Resume bullets that sound stronger fast.",
+            "hook": "Turn this weak resume bullet into a strong one.",
             "beats": [
                 "Weak: worked on a web app using React.",
                 "Strong: built a React dashboard used by forty students, cutting signup time in half.",
@@ -174,7 +174,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Your resume should be one page.",
+            "hook": "Your two-page resume is getting skimmed. Cut it.",
             "beats": [
                 "Early-career resumes over one page usually get skimmed less, not more.",
                 "Cut anything older than high school graduation and any objective statement.",
@@ -182,7 +182,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Make your resume pass the parser.",
+            "hook": "Your resume might look blank to the parser.",
             "beats": [
                 "Use a simple single-column layout with standard section headings.",
                 "Skip icons, tables, and text inside images. Parsers can drop them.",
@@ -190,7 +190,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "The skills section most students get wrong.",
+            "hook": "If it's in your skills section, they'll ask about it.",
             "beats": [
                 "Don't list every language you touched once in a class.",
                 "Group skills by languages, frameworks, and tools you've actually shipped with.",
@@ -198,7 +198,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "A portfolio project that gets interviews.",
+            "hook": "Stop building to-do apps. Build this instead.",
             "beats": [
                 "Pick a problem from the industry you want, not another to-do app.",
                 "Want fintech? Build a budget tracker with real bank-style data.",
@@ -208,7 +208,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
     ],
     "market_context": [
         {
-            "hook": "New-grad market update, minus the panic.",
+            "hook": "New grad hiring isn't dead. It moved.",
             "beats": [
                 "Hiring is slower and more selective, but companies are still hiring.",
                 "Roles are spread wider now: data, infrastructure, AI tooling, and security.",
@@ -216,7 +216,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "What AI hiring means for students.",
+            "hook": "Companies want this from students now. Not prompts.",
             "beats": [
                 "Companies want engineers who can build with AI tools, not just talk about them.",
                 "One project that uses a model API in a real workflow stands out right now.",
@@ -224,7 +224,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Layoff headlines? Here's the context.",
+            "hook": "Layoff headlines don't mean internships are gone.",
             "beats": [
                 "Layoffs usually hit specific teams, while other teams keep hiring.",
                 "Internship and new-grad programs often run on separate budgets.",
@@ -232,7 +232,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Recruiting season timing, simplified.",
+            "hook": "Missed the early internship wave? You're not out.",
             "beats": [
                 "Many big tech summer internships open in late summer and early fall.",
                 "Startups and mid-size companies keep hiring well into spring.",
@@ -242,7 +242,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
     ],
     "motivational_community": [
         {
-            "hook": "You're not behind. Do this next.",
+            "hook": "You're not behind. Do these three things today.",
             "beats": [
                 "Pick one role family, fix one resume bullet, and send one application today.",
                 "Small daily reps compound faster than one panicked weekend.",
@@ -250,7 +250,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "Job search momentum without burnout.",
+            "hook": "Applying all day is why you're burning out.",
             "beats": [
                 "Set a daily cap: five tailored applications, then stop.",
                 "Spend the rest of your time building or practicing, not refreshing email.",
@@ -258,7 +258,7 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
             ],
         },
         {
-            "hook": "The small move that makes this week better.",
+            "hook": "One message this week can beat ten blog posts.",
             "beats": [
                 "Message one person who has the job you want and ask one question.",
                 "Most people are happy to answer a short, specific message.",

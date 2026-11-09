@@ -85,7 +85,7 @@ def test_job_alert_script_names_company_role_and_city() -> None:
     assert "has a public posting" not in package.full_script
     assert 35 <= len(package.full_script.split()) <= 80
     scenes = package.metadata["scenes"]
-    assert [scene["kind"] for scene in scenes] == ["hook", "job", "job", "job", "point", "cta"]
+    assert [scene["kind"] for scene in scenes] == ["hook", "job", "job", "job", "cta"]
     assert scenes[1]["company"] == "Stripe" and scenes[1]["location"] == "San Francisco"
     assert len(scenes) == len(package.full_script.splitlines())
 
@@ -127,3 +127,21 @@ def test_job_alert_speaks_posted_pay_and_guard_keeps_it() -> None:
     guarded = guard_script(package.full_script, items)
     assert "$47–$58/hr" in guarded.script_text  # real, sourced numbers are not softened
     assert "recent" not in guarded.script_text.split("\n")[1]
+
+
+def test_hooks_only_claim_what_the_postings_support() -> None:
+    from app.writing.hooks import choose_hook, job_alert_candidates
+
+    jobs = [
+        {"company": "Samsara", "title": "Software Engineering Intern", "pay": "$61.90/hr", "posted_days": 1},
+        {"company": "Google", "title": "Software Engineering Intern", "pay": "$52–$58/hr", "posted_days": 3},
+    ]
+    hooks = {hook.id: hook.text for hook in job_alert_candidates(jobs, "interns", "internships")}
+    assert hooks["company_pays"] == "Samsara pays interns up to $61.90/hr."
+    assert hooks["not_faang"] == "This internship pays $61.90/hr and it isn't FAANG."
+    assert hooks["n_paying_over"] == "2 internships that pay at least $52/hr, still open."
+    assert "grad_year" not in hooks  # no year in the titles
+    google_top = [{"company": "Google", "title": "SWE Intern", "pay": "$70/hr", "posted_days": 1}]
+    assert "not_faang" not in {h.id for h in job_alert_candidates(google_top, "interns", "internships")}
+    picked = choose_hook(job_alert_candidates(jobs, "interns", "internships"), {"company_pays": 1.8}, ["as_an_intern"], seed=3)
+    assert picked.id != "as_an_intern"

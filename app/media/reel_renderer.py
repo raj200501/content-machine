@@ -113,6 +113,12 @@ class Scene:
     layout: list = field(default_factory=list)  # [(word_index, x, y)] for big text
     text_font: ImageFont.FreeTypeFont | None = None
     chunks: list = field(default_factory=list)  # caption chunks for card scenes
+    page: Image.Image | None = None  # captured job posting (real screen recording look)
+    page_title: tuple | None = None
+    page_pay: tuple | None = None
+    page_pay_rects: list | None = None
+    hold_on_pay: bool = False  # hook: open already zoomed on the highlighted pay
+    hook_bg: Image.Image | None = None
 
 
 def plan_scenes(script_row: dict, lines: list[TimedLine]) -> list[Scene]:
@@ -341,13 +347,15 @@ def _job_card(data: dict) -> Image.Image:
     return card
 
 
-def prepare_scene(scene: Scene, script_row: dict, settings: Settings) -> None:
+def prepare_scene(scene: Scene, script_row: dict, settings: Settings, work_dir: Path | None = None) -> None:
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     words = [word.text for word in scene.line.words]
     handle = settings.brand_handle or "@careerstacked"
 
-    if scene.kind == "hook":
+    if scene.kind == "hook" and scene.page is not None:
+        scene.text_font, scene.layout = layout_big_text(words, (LEFT + 20, 330, RIGHT - 20, 760), start_size=88, min_size=60, max_lines=4)
+    elif scene.kind == "hook":
         _pill(draw, LEFT, 330, _kicker_text(script_row), font(34, 800), PALETTE["accent"], (255, 255, 255))
         companies = [str(name) for name in scene.data.get("companies", []) if name][:3]
         text_box = (LEFT, 470, RIGHT, 1180 if companies else 1300)
@@ -364,6 +372,14 @@ def prepare_scene(scene: Scene, script_row: dict, settings: Settings) -> None:
         if sub:
             face = font(38, 600)
             draw.text((LEFT + ((RIGHT - LEFT) - face.getlength(sub)) / 2, 1340), sub, font=face, fill=PALETTE["muted"])
+    elif scene.kind == "job" and scene.page is not None:
+        scene.big_text = False
+        scene.chunks = caption_chunks(scene.line.words)
+        scene.text_box = (LEFT, 1300, CAPTION_RIGHT, 1520)
+        number, total = scene.data.get("number", 1), scene.data.get("total", 1)
+        label = f"{number}/{total}"
+        face = font(34, 800)
+        _pill(draw, RIGHT - int(face.getlength(label)) - 44, 150, label, face, PALETTE["accent"], (255, 255, 255), pad_x=22, pad_y=10)
     elif scene.kind == "job":
         scene.card = _job_card(scene.data)
         scene.card_xy = (LEFT, 360)
@@ -426,6 +442,13 @@ def _draw_big_text(draw: ImageDraw.ImageDraw, scene: Scene, t: float) -> None:
     if t >= scene.line.speech_end:
         active = len(words)  # everything lit once the line is spoken
     ascent, descent = face.getmetrics()
+    if scene.page is not None and scene.layout:
+        xs = [x for _i, x, _y in scene.layout]
+        ys = [y for _i, _x, y in scene.layout]
+        right = max(x + face.getlength(words[i].text) for i, x, _y in scene.layout)
+        draw.rounded_rectangle(
+            [min(xs) - 36, min(ys) - 26, right + 36, max(ys) + ascent + descent + 26], radius=34, fill=(12, 10, 24)
+        )
     for index, x, y in scene.layout:
         text = words[index].text
         money = "$" in text or "£" in text or "€" in text
@@ -462,6 +485,14 @@ def _draw_caption_chunk(draw: ImageDraw.ImageDraw, scene: Scene, t: float) -> No
     line_h = 84
     top = y0 + ((y1 - y0) - len(rows) * line_h) // 2
     space = face.getlength(" ")
+    if scene.page is not None:
+        widest = max(sum(face.getlength(texts[i]) for i in row) + space * (len(row) - 1) for row in rows)
+        cx = (x0 + x1) / 2
+        draw.rounded_rectangle(
+            [cx - widest / 2 - 34, top - 22, cx + widest / 2 + 34, top + len(rows) * line_h + 18],
+            radius=28,
+            fill=(12, 10, 24),
+        )
     for row_index, row in enumerate(rows):
         row_w = sum(face.getlength(texts[i]) for i in row) + space * (len(row) - 1)
         x = x0 + ((x1 - x0) - row_w) / 2
@@ -473,13 +504,117 @@ def _draw_caption_chunk(draw: ImageDraw.ImageDraw, scene: Scene, t: float) -> No
             x += face.getlength(texts[i]) + space
 
 
+def _ease_in_out(value: float) -> float:
+    value = min(max(value, 0.0), 1.0)
+    return value * value * (3 - 2 * value)
+
+
+def _money_time(scene: Scene) -> float | None:
+    for word in scene.line.words:
+        if any(symbol in word.text for symbol in "$£€"):
+            return word.start
+    return None
+
+
+def _posting_frame(scene: Scene, t: float) -> Image.Image:
+    page = scene.page
+    assert page is not None
+    pw, ph = page.size
+    u = t - scene.line.start
+    title = scene.page_title or (0, 200 + BROWSER_HEADER, pw, 120)
+    focus0 = (pw / 2, H * 0.38)  # open on the address bar and title, like a fresh page load
+    pay_time = _money_time(scene)
+    anchor = 0.38
+    if scene.page_pay:
+        pay = scene.page_pay
+        focus1 = (pay[0] + pay[2] / 2, pay[1] + pay[3] / 2)
+        # Zoom in, but never so far that the pay line runs off the screen.
+        zoom1 = max(1.0, min(1.22, 0.9 * W / (pay[2] + 40)))
+        if scene.hold_on_pay:
+            anchor = 0.6  # leave the top of the frame for the hook text
+        move_at = (pay_time if pay_time is not None else scene.line.start + 0.5 * (scene.line.end - scene.line.start)) - 0.9
+    else:
+        focus1 = (pw / 2, title[1] + title[3] / 2 + 260)
+        zoom1 = 1.14
+        move_at = scene.line.start + 0.6
+    progress = 1.0 if scene.hold_on_pay else _ease_in_out((t - move_at) / 0.9)
+    zoom = 1.0 + (zoom1 - 1.0) * progress + 0.012 * math.sin(u * 2.1)
+    fx = focus0[0] + (focus1[0] - focus0[0]) * progress
+    fy = focus0[1] + (focus1[1] - focus0[1]) * progress + 18 * u  # slow natural drift
+    win_w, win_h = W / zoom, H / zoom
+    x0 = min(max(fx - win_w / 2, 0), max(pw - win_w, 0))
+    y0 = min(max(fy - win_h * anchor, 0), max(ph - win_h, 0))
+    crop = page.crop((int(x0), int(y0), int(x0 + win_w), int(y0 + win_h)))
+    if crop.size[1] < int(win_h):  # short page: pad with white
+        padded = Image.new("RGB", (crop.size[0], int(win_h)), (255, 255, 255))
+        padded.paste(crop, (0, 0))
+        crop = padded
+    frame = crop.resize((W, H), Image.BILINEAR).convert("RGBA")
+    highlight_from = scene.line.start - 1 if scene.hold_on_pay else pay_time
+    if scene.page_pay and highlight_from is not None and t >= highlight_from:
+        # Highlighter swipe across the real pay text (one stroke per line) as it is spoken.
+        from PIL import ImageChops
+
+        sweep = _ease_out((t - highlight_from) / 0.35)
+        boxes = scene.page_pay_rects or [scene.page_pay]
+        total_w = sum(box[2] for box in boxes) or 1
+        drawn = 0.0
+        for px, py, pw_, ph_ in boxes:
+            share = min(max((sweep * total_w - drawn) / max(pw_, 1), 0), 1)
+            drawn += pw_
+            if share <= 0:
+                continue
+            left = (px - x0) * zoom - 8
+            top = (py - y0) * zoom - 4
+            right = left + (pw_ * zoom + 16) * share
+            bottom = top + ph_ * zoom + 8
+            box = [int(max(left, 0)), int(max(top, 0)), int(min(right, W)), int(min(bottom, H))]
+            if box[2] > box[0] and box[3] > box[1]:
+                region = frame.crop(box).convert("RGB")
+                tint = Image.new("RGB", region.size, (255, 226, 80))
+                frame.paste(ImageChops.multiply(region, tint).convert("RGBA"), box[:2])
+    # Dark band at the top for the progress bar and label.
+    band = Image.new("RGBA", (W, 330), (0, 0, 0, 0))
+    band_draw = ImageDraw.Draw(band)
+    for y in range(330):
+        band_draw.line([(0, y), (W, y)], fill=(8, 6, 16, int(200 * (1 - y / 330) ** 1.6)))
+    frame.alpha_composite(band)
+    if u < 0.2 and not scene.hold_on_pay:
+        # Whip in from the right with a little motion blur.
+        shift = int(W * (1 - _ease_out(u / 0.2)))
+        moved = Image.new("RGBA", (W, H), (8, 6, 16, 255))
+        moved.alpha_composite(frame, (shift, 0))
+        blur = Image.new("RGBA", (W, H), (8, 6, 16, 255))
+        blur.alpha_composite(frame, (shift + 40, 0))
+        frame = Image.blend(moved, blur, 0.35)
+    return frame
+
+
+def _hook_background(page: Image.Image) -> Image.Image:
+    top = page.crop((0, 0, W, min(page.size[1], H)))
+    if top.size[1] < H:
+        padded = Image.new("RGB", (W, H), (255, 255, 255))
+        padded.paste(top, (0, 0))
+        top = padded
+    blurred = top.filter(ImageFilter.GaussianBlur(10))
+    shade = Image.new("RGB", (W, H), (10, 8, 22))
+    return Image.blend(blurred, shade, 0.72)
+
+
 def render_frame(background: Image.Image, scenes: list[Scene], scene: Scene, t: float) -> Image.Image:
-    dx = 120 + 90 * math.sin(2 * math.pi * t / 15.0)
-    dy = 120 + 90 * math.cos(2 * math.pi * t / 19.0)
-    frame = background.crop((int(dx), int(dy), int(dx) + W, int(dy) + H)).convert("RGBA")
+    if scene.page is not None:
+        frame = _posting_frame(scene, t)
+    elif scene.hook_bg is not None:
+        zoom = 1.06 - 0.06 * min((t - scene.line.start) / max(scene.line.end - scene.line.start, 0.1), 1)
+        big = scene.hook_bg.resize((int(W * zoom), int(H * zoom)), Image.BILINEAR)
+        frame = big.crop(((big.size[0] - W) // 2, (big.size[1] - H) // 2, (big.size[0] - W) // 2 + W, (big.size[1] - H) // 2 + H)).convert("RGBA")
+    else:
+        dx = 120 + 90 * math.sin(2 * math.pi * t / 15.0)
+        dy = 120 + 90 * math.cos(2 * math.pi * t / 19.0)
+        frame = background.crop((int(dx), int(dy), int(dx) + W, int(dy) + H)).convert("RGBA")
     if scene.layer is not None:
         frame.alpha_composite(scene.layer)
-    if scene.card is not None:
+    if scene.card is not None and scene.page is None:
         progress = _ease_out((t - scene.line.start) / 0.32)
         x, y = scene.card_xy
         offset = int((1 - progress) * 90)
@@ -510,21 +645,35 @@ def render_frame(background: Image.Image, scenes: list[Scene], scene: Scene, t: 
 # ------------------------------------------------------------- audio ------
 
 
-def mix_audio(settings: Settings, voice: TimedVoiceover, work_dir: Path, seed: int) -> Path:
+def mix_audio(settings: Settings, voice: TimedVoiceover, work_dir: Path, seed: int, sfx: Path | None = None) -> Path:
     mixed = work_dir / "mix.m4a"
     inputs = ["-i", str(voice.path)]
+    sfx_index = None
     if settings.music_bed:
         bed = generate_music_bed(work_dir / "music_bed.wav", voice.duration + 0.5, seed=seed)
         inputs += ["-i", str(bed)]
+    if sfx is not None:
+        inputs += ["-i", str(sfx)]
+        sfx_index = 2 if settings.music_bed else 1
+    sfx_chain = (
+        f"[{sfx_index}:a]aresample=44100,pan=stereo|c0=c0|c1=c0,volume={settings.sfx_volume_db}dB[s];" if sfx_index else ""
+    )
+    if settings.music_bed:
         graph = (
             "[0:a]aresample=44100,pan=stereo|c0=c0|c1=c0,asplit=2[v1][v2];"
             f"[1:a]volume={settings.music_bed_volume_db}dB[m];"
             "[m][v2]sidechaincompress=threshold=0.03:ratio=5:attack=15:release=350[md];"
-            "[v1][md]amix=inputs=2:duration=first:normalize=0,"
-            "loudnorm=I=-14:TP=-1.5:LRA=11[out]"
+            + sfx_chain
+            + ("[v1][md][s]amix=inputs=3" if sfx_index else "[v1][md]amix=inputs=2")
+            + ":duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[out]"
         )
     else:
-        graph = "[0:a]aresample=44100,pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11[out]"
+        graph = (
+            "[0:a]aresample=44100,pan=stereo|c0=c0|c1=c0[v1];"
+            + sfx_chain
+            + ("[v1][s]amix=inputs=2:duration=first:normalize=0," if sfx_index else "[v1]")
+            + "loudnorm=I=-14:TP=-1.5:LRA=11[out]"
+        )
     run_command(
         [settings.ffmpeg_binary, "-y", *inputs, "-filter_complex", graph, "-map", "[out]", "-c:a", "aac", "-b:a", "192k", str(mixed)]
     )
@@ -549,6 +698,94 @@ def write_word_srt(lines: list[TimedLine], path: Path) -> Path:
     return path
 
 
+BROWSER_HEADER = 440  # px of mobile-browser chrome added above each captured page
+
+
+def _with_browser_chrome(page: Image.Image, url: str) -> Image.Image:
+    """Put a mobile browser address bar above the page so it reads as a screen recording."""
+
+    from urllib.parse import urlparse
+
+    domain = urlparse(url).netloc.replace("www.", "") or "careers"
+    canvas = Image.new("RGB", (page.size[0], page.size[1] + BROWSER_HEADER + 1400), (255, 255, 255))
+    canvas.paste(page, (0, BROWSER_HEADER))
+    draw = ImageDraw.Draw(canvas)
+    draw.rectangle([0, 0, canvas.size[0], BROWSER_HEADER - 2], fill=(246, 246, 248))
+    draw.line([(0, BROWSER_HEADER - 2), (canvas.size[0], BROWSER_HEADER - 2)], fill=(222, 222, 228), width=3)
+    bar = [70, 322, canvas.size[0] - 70, 406]
+    draw.rounded_rectangle(bar, radius=26, fill=(229, 229, 234))
+    face = font(38, 600)
+    lock_x = (canvas.size[0] - face.getlength(domain)) / 2 - 34
+    draw.rounded_rectangle([lock_x, 360, lock_x + 22, 382], radius=4, fill=(90, 90, 100))
+    draw.arc([lock_x + 3, 344, lock_x + 19, 366], start=180, end=360, fill=(90, 90, 100), width=4)
+    draw.text((lock_x + 34, 342), domain, font=face, fill=(40, 40, 48))
+    return canvas
+
+
+def attach_captures(scenes: list[Scene], settings: Settings, work_dir: Path) -> None:
+    """Screen-capture the real postings for job scenes (falls back to cards)."""
+
+    jobs = [scene for scene in scenes if scene.kind == "job" and scene.data.get("url")]
+    if not settings.capture_postings or not jobs:
+        return
+    from app.media.page_capture import capture_pages
+
+    captures = capture_pages([scene.data for scene in jobs], work_dir / "pages")
+    for index, scene in enumerate(jobs):
+        capture = captures.get(index)
+        if capture is None:
+            continue
+        try:
+            raw = Image.open(capture.image_path).convert("RGB")
+        except OSError:
+            continue
+        scene.page = _with_browser_chrome(raw, str(scene.data.get("url", "")))
+        shift = lambda box: (box[0], box[1] + BROWSER_HEADER, box[2], box[3]) if box else None  # noqa: E731
+        scene.page_title, scene.page_pay = shift(capture.title), shift(capture.pay)
+        scene.page_pay_rects = [shift(box) for box in capture.pay_rects] if capture.pay_rects else None
+    if not scenes:
+        return
+    hook = scenes[0]
+    focus = hook.data.get("focus_job", 0) if hook.kind == "hook" else None
+    every_job = [scene for scene in scenes if scene.kind == "job"]
+    target = every_job[focus] if focus is not None and focus < len(every_job) else None
+    if hook.kind == "hook" and target is not None and target.page is not None and target.page_pay:
+        # Open on the payoff: the real posting, zoomed on its pay, already highlighted.
+        hook.page, hook.page_title = target.page, target.page_title
+        hook.page_pay, hook.page_pay_rects = target.page_pay, target.page_pay_rects
+        hook.hold_on_pay = True
+    elif hook.kind == "hook":
+        first = next((scene for scene in jobs if scene.page is not None), None)
+        if first is not None:
+            hook.hook_bg = _hook_background(first.page)
+    last = next((scene for scene in reversed(jobs) if scene.page is not None), None)
+    if last is not None:
+        for scene in scenes:
+            if scene.kind in {"cta", "point"}:
+                scene.hook_bg = _hook_background(last.page)
+
+
+def _scheduled_local(script_row: dict, settings: Settings):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(str(script_row.get("scheduled_at"))).astimezone(settings.tzinfo)
+    except (TypeError, ValueError):
+        return datetime.now(settings.tzinfo)
+
+
+def scene_sound_events(scenes: list[Scene]) -> list[tuple[float, str]]:
+    events: list[tuple[float, str]] = []
+    for index, scene in enumerate(scenes):
+        if index > 0:
+            events.append((max(scene.line.start - 0.12, 0), "whoosh"))
+        for word in scene.line.words:
+            if "$" in word.text or "£" in word.text or "€" in word.text:
+                events.append((word.start, "pop"))
+                break
+    return events
+
+
 # ------------------------------------------------------------- entry ------
 
 
@@ -561,11 +798,25 @@ def render_reel(settings: Settings, script_row: dict, output_root: Path) -> Rend
     seed = int(hash_text(script_text)[:8], 16)
 
     voice = synthesize_timed_lines(lines, work_dir, "voiceover", settings)
-    scenes = plan_scenes(script_row, voice.lines)
-    for scene in scenes:
-        prepare_scene(scene, script_row, settings)
+    category = script_row.get("category") or ""
+    notes = None
+    if settings.tip_style == "notes" and category not in {"openings_job_alert", "jobs_roundup"} and len(voice.lines) >= 2:
+        from app.media.notes_renderer import NotesScene
+
+        notes = NotesScene(voice.lines, when=_scheduled_local(script_row, settings))
+        scenes = plan_scenes(script_row, voice.lines)
+        events = notes.events()
+    else:
+        scenes = plan_scenes(script_row, voice.lines)
+        attach_captures(scenes, settings, work_dir)
+        for scene in scenes:
+            prepare_scene(scene, script_row, settings, work_dir)
+        events = scene_sound_events(scenes)
     background = build_background(seed)
-    audio = mix_audio(settings, voice, work_dir, seed)
+    from app.media.sfx import render_sfx_track
+
+    sfx = render_sfx_track(events, voice.duration, work_dir / "sfx.wav", seed=seed) if settings.sound_effects else None
+    audio = mix_audio(settings, voice, work_dir, seed, sfx)
     subtitles = write_word_srt(voice.lines, work_dir / "captions.srt")
 
     fps = settings.render_fps
@@ -611,9 +862,12 @@ def render_reel(settings: Settings, script_row: dict, output_root: Path) -> Rend
     try:
         for frame_number in range(total_frames):
             t = frame_number / fps
-            while scene_index < len(scenes) - 1 and t >= scenes[scene_index].line.end:
-                scene_index += 1
-            frame = render_frame(background, scenes, scenes[scene_index], t)
+            if notes is not None:
+                frame = notes.frame(t, voice.duration).convert("RGB")
+            else:
+                while scene_index < len(scenes) - 1 and t >= scenes[scene_index].line.end:
+                    scene_index += 1
+                frame = render_frame(background, scenes, scenes[scene_index], t)
             assert process.stdin is not None
             process.stdin.write(frame.tobytes())
     finally:
@@ -637,6 +891,7 @@ def render_reel(settings: Settings, script_row: dict, output_root: Path) -> Rend
             "work_dir": str(work_dir),
             "thumb_offset_ms": int(max(hook_end - 0.05, 0.2) * 1000),
             "scenes": [scene.kind for scene in scenes],
+            "style": "notes" if notes is not None else "motion",
         },
         fallback_used=True,
     )

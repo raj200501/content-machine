@@ -48,3 +48,42 @@ def test_render_reel_produces_vertical_video_with_audio(tmp_path: Path) -> None:
     assert (video["width"], video["height"]) == (1080, 1920)
     assert any(s["codec_type"] == "audio" for s in streams)
     assert artifact.metadata["thumb_offset_ms"] > 0
+
+
+def test_captured_postings_open_on_the_pay(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+
+    import app.media.page_capture as page_capture
+    from app.media.page_capture import PageCapture
+    from app.media.reel_renderer import _posting_frame, attach_captures
+
+    def fake_capture(jobs, out_dir, timeout_ms=30000):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        result = {}
+        for index, _job in enumerate(jobs):
+            path = out_dir / f"page_{index}.png"
+            Image.new("RGB", (1080, 3000), (255, 255, 255)).save(path)
+            # Pay wraps onto two lines, like most real postings.
+            result[index] = PageCapture(path, 3000, (40, 300, 900, 80), (40, 1200, 1000, 120), [(700, 1200, 340, 50), (40, 1260, 300, 50)])
+        return result
+
+    monkeypatch.setattr(page_capture, "capture_pages", fake_capture)
+    settings = Settings(output_dir=tmp_path, assets_dir=tmp_path / "assets")
+    lines = [TimedLine(f"line {i}", i * 2.0, i * 2.0 + 2, i * 2.0 + 1.8, []) for i in range(4)]
+    row = {"metadata_json": json.dumps({"scenes": [
+        {"kind": "hook", "focus_job": 1},
+        {"kind": "job", "company": "A", "url": "https://job-boards.greenhouse.io/a/jobs/1"},
+        {"kind": "job", "company": "B", "url": "https://jobs.lever.co/b/2"},
+        {"kind": "cta"},
+    ]})}
+    scenes = plan_scenes(row, lines)
+    attach_captures(scenes, settings, tmp_path)
+    hook, _first, second, cta = scenes
+    assert hook.hold_on_pay and hook.page is second.page
+    assert hook.page_pay_rects and len(hook.page_pay_rects) == 2
+    assert cta.hook_bg is not None
+    frame = _posting_frame(hook, 0.0)
+    assert frame.size == (1080, 1920)
+    # The highlight is already on at the very first frame (yellow tint somewhere).
+    pixels = frame.convert("RGB").getdata()
+    assert any(r > 240 and 200 < g < 235 and b < 100 for r, g, b in pixels)

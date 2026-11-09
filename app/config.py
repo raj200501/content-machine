@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     music_bed: bool = True
     music_bed_volume_db: float = -24.0
     render_fps: int = 30
+    tip_style: str = "notes"  # notes (typing on a phone) | motion (big kinetic text)
+    sound_effects: bool = True
+    capture_postings: bool = True  # screen-capture real job postings (needs Playwright + Chromium)
+    sfx_volume_db: float = -10.0
     # Scheduled runs: GitHub cron fires late or not at all, so the app decides
     # what to post. At most one post per run, spaced out, never overnight, and
     # anything more than stale_after_hours overdue is dropped.

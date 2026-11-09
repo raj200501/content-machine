@@ -9,6 +9,7 @@ from itertools import cycle
 from app.models import CaptionPackage, PlannedTopic, ScriptPackage
 from app.utils import json_loads
 from app.writing.caption_writer import build_caption
+from app.writing.hooks import annualized, choose_hook, job_alert_candidates
 from app.writing.prompt_templates import CATEGORY_CTAS, CATEGORY_SUBS, JOB_ALERT_CTAS, JOB_ALERT_TIPS, SCRIPT_CTAS
 from app.writing.script_packs import pick_pack
 
@@ -116,6 +117,7 @@ def _job_details(item: dict, day: str) -> dict:
         "pay": str(metadata.get("pay") or ""),
         "pay_spoken": str(metadata.get("pay_spoken") or ""),
         "posted_days": _posted_days(item, day),
+        "url": str(item.get("source_url") or ""),
     }
 
 
@@ -145,37 +147,26 @@ def _join_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int) -> tuple[str, list[str], list[dict]]:
+def _job_alert(
+    topic: PlannedTopic,
+    evidence_items: list[dict],
+    day_ordinal: int,
+    hook_performance: dict[str, float] | None = None,
+    recent_hook_ids: list[str] | None = None,
+) -> tuple[str, list[str], list[dict], str]:
     jobs = [_job_details(item, topic.day) for item in evidence_items[:3]]
+    # Lead with the best-paying role: the reel opens on its posted pay.
+    jobs.sort(key=lambda job: annualized(job["pay"]), reverse=True)
     companies = [job["company"] for job in jobs]
     audience, roles = _audience_word(jobs)
-    names = _join_names(companies)
-    paid = [job for job in jobs if job["pay"]]
-    fresh = all(job["posted_days"] is not None and job["posted_days"] <= 7 for job in jobs)
-    options = [
-        f"{names} are hiring {audience} right now.",
-        f"Apply to these {roles} at {names} this week.",
-    ]
-    if fresh:
-        options.append(f"{names} just posted new {roles}.")
-    if paid:
-        top = paid[0]
-        role_word = "internship" if "intern" in top["title"].lower() else "role"
-        top_pay = top["pay"].split("–")[-1]
-        if "–" in top["pay"] and not top_pay.startswith(("$", "£", "€")):
-            top_pay = top["pay"][0] + top_pay
-        options.append(f"This {top['company']} {role_word} lists up to {top_pay}.")
-    hook = options[(day_ordinal + topic.slot_index) % len(options)]
-    if paid and (day_ordinal + topic.slot_index) % 3 != 2:
-        # Lead with the money most of the time: it is the most specific, most
-        # scroll-stopping first line. Keep a third of hooks on company names to test.
-        hook = options[-1]
+    candidates = job_alert_candidates(jobs, audience, roles)
+    hook_choice = choose_hook(candidates, hook_performance, recent_hook_ids or [], seed=day_ordinal * 10 + topic.slot_index)
+    hook = hook_choice.text
     beats = [_job_line(job) for job in jobs]
-    beats.append(JOB_ALERT_TIPS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_TIPS)])
     sub = {"interns": "Internships", "new grads": "New grad roles"}.get(audience, "Students & new grads")
-    if paid:
+    if any(job["pay"] for job in jobs):
         sub += "  ·  pay listed"
-    scenes = [{"kind": "hook", "companies": companies, "sub": sub}]
+    scenes = [{"kind": "hook", "companies": companies, "sub": sub, "focus_job": 0, "hook_id": hook_choice.id}]
     for job in jobs:
         scenes.append(
             {
@@ -185,10 +176,10 @@ def _job_alert(topic: PlannedTopic, evidence_items: list[dict], day_ordinal: int
                 "location": job["location"],
                 "pay": job["pay"],
                 "posted_days": job["posted_days"],
+                "url": job["url"],
             }
         )
-    scenes.append({"kind": "point", "label": "DO THIS TONIGHT"})
-    return hook, beats, scenes
+    return hook, beats, scenes, hook_choice.id
 
 
 def _roundup(topic: PlannedTopic, evidence_items: list[dict]) -> tuple[str, list[str], list[dict]]:
@@ -232,6 +223,8 @@ def build_script(
     topic: PlannedTopic,
     evidence_items: list[dict],
     recent_hooks: set[str] | None = None,
+    hook_performance: dict[str, float] | None = None,
+    recent_hook_ids: list[str] | None = None,
 ) -> ScriptPackage:
     cta = next(CTA_CYCLE)
     try:
@@ -242,6 +235,7 @@ def build_script(
     hook = ""
     beats: list[str] = []
     scenes: list[dict] = []
+    hook_id = ""
     if topic.category == "jobs_roundup" and evidence_items:
         hook, beats, scenes = _roundup(topic, evidence_items)
         cta = "Save this, then send it to a friend who's applying."
@@ -263,7 +257,7 @@ def build_script(
             metadata={"word_count": len(full_script.split()), "scenes": scenes, "format": "carousel"},
         )
     if topic.category == "openings_job_alert" and evidence_items:
-        hook, beats, scenes = _job_alert(topic, evidence_items, day_ordinal)
+        hook, beats, scenes, hook_id = _job_alert(topic, evidence_items, day_ordinal, hook_performance, recent_hook_ids)
         cta = JOB_ALERT_CTAS[(day_ordinal + topic.slot_index) % len(JOB_ALERT_CTAS)]
     elif topic.category == "market_context":
         sourced = _market_from_headline(topic, evidence_items)
@@ -306,5 +300,5 @@ def build_script(
         full_script=full_script,
         caption=caption,
         evidence=evidence,
-        metadata={"word_count": len(full_script.split()), "scenes": scenes},
+        metadata={"word_count": len(full_script.split()), "scenes": scenes, "hook_id": hook_id or f"pack:{hook[:40]}"},
     )

@@ -68,7 +68,7 @@ def generate_music_bed(output_path: Path, duration: float, seed: int = 0) -> Pat
 
     rng = np.random.default_rng(seed)
     progression = PROGRESSIONS[seed % len(PROGRESSIONS)]
-    bpm = float(rng.choice([84, 88, 92, 96]))
+    bpm = float(rng.choice([120, 124, 128]))  # >120 BPM tends to hold viewers better
     beat = 60.0 / bpm
     chord_seconds = beat * 8  # two bars per chord
     total = int((duration + 1.5) * RATE)
