@@ -115,10 +115,28 @@ def validate(category: str, hook: str, beats: list[str], used_hooks: list[str]) 
 
 def _tidy(line: str) -> str:
     line = re.sub(r"\s+", " ", str(line or "")).strip().strip('"').strip()
-    line = line.replace("—", ", ").replace("–", "-")
-    if line and line[-1] not in ".?!":
+    line = re.sub(r"\s*[—–]\s*", ", ", line)
+    line = line.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    line = re.sub(r"\s+([,.?!])", r"\1", line)
+    if line and line[-1] not in ".?!" and not (line[-1] in "'\"" and line[-2:-1] in tuple(".?!")):
         line += "."
     return line
+
+
+STRONG = re.compile(r"\b(this|these|say|stop|never|instead|steal|copy|exact|before|after|ask)\b", re.I)
+GENERIC = re.compile(r"\b(journey|success|passion|embrace|silence|rest|mindset|believe|dream|grind|hustle|unlock)\b", re.I)
+
+
+def score(hook: str, beats: list[str]) -> float:
+    """Prefer short, specific hooks and payoffs the viewer can use word for word."""
+
+    words = len(hook.split())
+    value = 2.0 - abs(words - 8) * 0.15
+    value += 0.6 if STRONG.search(hook) else 0
+    value += sum(0.4 for beat in beats if "'" in beat or '"' in beat or ":" in beat)
+    value += sum(0.2 for beat in beats if re.match(r"^(add|cut|ask|say|send|write|pick|use|open|list|swap|start|end|replace)\b", beat, re.I))
+    value -= sum(0.8 for line in [hook, *beats] if GENERIC.search(line))
+    return value
 
 
 def _parse(content: str) -> list[dict]:
@@ -135,15 +153,15 @@ def _parse(content: str) -> list[dict]:
 
 def _prompt(categories: list[str], winners: list[dict], losers: list[dict], used_hooks: list[str], headlines: list[str]) -> str:
     examples = []
-    for category in categories[:2]:
-        pack = (SCRIPT_PACKS.get(category) or [None])[0]
-        if pack:
-            examples.append({"category": category, "hook": pack["hook"], "lines": pack["beats"]})
+    for category, index in (("interview_prep", 3), ("resume_portfolio", 3), ("application_strategy", 3)):
+        packs = SCRIPT_PACKS.get(category) or []
+        if len(packs) > index:
+            examples.append({"category": category, "hook": packs[index]["hook"], "lines": packs[index]["beats"]})
     parts = [
-        "Write one new reel for each of these categories:",
+        "Write TWO different new reels for each of these categories (different angles):",
         *[f"- {category}: {CATEGORY_BRIEFS.get(category, category)}" for category in categories],
         "",
-        "Format example (style only, do not reuse):",
+        "Examples of the voice and format (do not reuse them):",
         json.dumps({"reels": examples}, indent=1),
     ]
     if winners:
@@ -175,7 +193,7 @@ def _call(base_url: str, model: str, prompt: str, api_key: str = "") -> str:
             "model": model,
             "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
             "temperature": 0.9,
-            "max_tokens": 1200,
+            "max_tokens": 2000,
             "response_format": {"type": "json_object"},
         },
         timeout=600,
@@ -268,17 +286,21 @@ def _drafts_from(base: str, model: str, prompt: str, wanted: list[str], used: li
         except Exception as exc:
             LOG.warning("Idea engine call failed: %s", str(exc)[:200])
             return {}
-        result: dict[str, DraftPack] = {}
+        options: dict[str, list[tuple[float, DraftPack]]] = {}
         for draft in _parse(content):
             category = str(draft.get("category", "")).strip()
             hook = _tidy(draft.get("hook", ""))
             beats = [_tidy(line) for line in (draft.get("lines") or []) if str(line).strip()]
-            reason = validate(category, hook, beats, used)
-            if reason or category in result or category not in wanted:
-                LOG.info("Idea engine rejected a draft (%s): %s", reason or "duplicate category", hook[:60])
+            reason = validate(category, hook, beats, used) or (None if category in wanted else "not asked for")
+            if reason:
+                LOG.info("Idea engine rejected a draft (%s): %s", reason, hook[:60])
                 continue
-            used.append(hook)
-            result[category] = DraftPack(category, hook, beats, model)
+            options.setdefault(category, []).append((score(hook, beats), DraftPack(category, hook, beats, model)))
+        result: dict[str, DraftPack] = {}
+        for category, scored in options.items():
+            best = max(scored, key=lambda item: item[0])[1]
+            used.append(best.hook)
+            result[category] = best
         LOG.info("Idea engine: %d/%d drafts passed in %.0fs", len(result), len(wanted), time.time() - started)
         if result:
             return result
