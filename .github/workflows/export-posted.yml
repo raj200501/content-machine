@@ -1,0 +1,60 @@
+name: export-posted
+
+# Copies the reels that were actually posted (from the posting runs' artifacts)
+# to the 'posted' branch as small review files, so they can be audited without
+# downloading artifacts. Run by hand with the posting run ids.
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "Space-separated posting run ids"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg && pip install -q Pillow
+      - name: Fetch artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_IDS: ${{ inputs.run_ids }}
+        run: |
+          mkdir -p posted
+          for id in $RUN_IDS; do
+            gh run download "$id" -R "$GITHUB_REPOSITORY" -D "posted/$id" || echo "no artifacts for $id"
+          done
+          find posted -type f | head -50
+      - name: Review files
+        run: |
+          mkdir -p review
+          for dir in posted/*/; do
+            id=$(basename "$dir")
+            python scripts/preview_sheets.py "$dir" "review/$id" || true
+            find "$dir" -name "*.json" -exec cp {} "review/$id/" \; 2>/dev/null || true
+            find "$dir" -name "*.srt" -exec cp {} "review/$id/" \; 2>/dev/null || true
+            # full-quality audio for listening checks
+            for video in $(find "$dir" -name "*.mp4"); do
+              ffmpeg -loglevel error -y -i "$video" -vn -c:a libmp3lame -b:a 128k "review/$id/$(basename "$video" .mp4).mp3" || true
+            done
+          done
+      - name: Push to the 'posted' branch
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd review
+          git init -q -b posted
+          git config user.name "preview-bot"
+          git config user.email "preview-bot@users.noreply.github.com"
+          git add -A
+          git commit -qm "Posted reels for review"
+          git push -fq "https://x-access-token:${TOKEN}@github.com/${REPO}.git" posted
