@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: write  # pushes review files to the 'previews' branch
-  models: read     # the free idea engine
 
 jobs:
   preview:
@@ -57,13 +56,18 @@ jobs:
         run: |
           ./scripts/install_kokoro.sh
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || true
+      - name: Restore idea model
+        uses: actions/cache@v4
+        with:
+          path: assets/llm
+          key: idea-model-qwen3-4b-v1
+      - name: Install idea model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/install_idea_model.sh || echo "Idea model unavailable"
       - name: Idea engine check
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python -m app.cli idea-check || true
+        run: time python -m app.cli idea-check || true
       - name: Render a dry-run day
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python -m app.cli init-db
           time python -m app.cli daily-run

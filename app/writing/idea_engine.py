@@ -1,7 +1,11 @@
 """Daily idea engine: drafts fresh tip reels with a free model, steered by results.
 
-Runs inside GitHub Actions with GitHub Models (free, rate-limited, no API key:
-the workflow's own token with `models: read`). Each day it gets:
+The model runs inside the GitHub Actions runner itself: a small open model
+(GGUF) served by llama.cpp's llama-server, both downloaded once and cached, so
+there is no account, no API key and no bill. Any OpenAI-compatible endpoint can
+be used instead by setting LLM_BASE_URL (and LLM_API_KEY / LLM_MODEL).
+
+Each day it gets:
 
 - which hooks on this account earned reach, saves and shares, and which flopped
 - hooks used recently (so it never repeats itself)
@@ -10,15 +14,21 @@ the workflow's own token with `models: read`). Each day it gets:
 and returns one tip script per requested category. Every draft is checked
 against hard rules (length, no invented stats, no money figures, no
 near-duplicates); anything that fails falls back to the hand-written packs, so
-a model outage never stops posting.
+a model problem never stops posting.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import socket
+import subprocess
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
@@ -27,7 +37,6 @@ from app.writing.script_packs import SCRIPT_PACKS
 
 LOG = logging.getLogger(__name__)
 
-ENDPOINT = "https://models.github.ai/inference/chat/completions"
 
 CATEGORY_BRIEFS = {
     "interview_prep": "coding, behavioral and recruiter interviews for internships and new grad roles",
@@ -147,7 +156,7 @@ def _prompt(categories: list[str], winners: list[dict], losers: list[dict], used
         parts += ["", "Today's hiring headlines, for a timely angle if one fits (never quote numbers from them):"]
         parts += [f"- {headline}" for headline in headlines[:8]]
     parts += ["", "Already used, do not repeat or reword:"]
-    parts += [f"- {hook}" for hook in used_hooks[:60]]
+    parts += [f"- {hook}" for hook in used_hooks[:45]]
     parts += [
         "",
         'Reply with JSON only: {"reels": [{"category": "...", "hook": "...", "lines": ["...", "...", "..."]}]}',
@@ -155,27 +164,75 @@ def _prompt(categories: list[str], winners: list[dict], losers: list[dict], used
     return "\n".join(parts)
 
 
-def _call(model: str, prompt: str, settings: Settings) -> str:
+def _call(base_url: str, model: str, prompt: str, api_key: str = "") -> str:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     response = requests.post(
-        ENDPOINT,
-        headers={
-            "Authorization": f"Bearer {settings.github_token}",
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+        f"{base_url.rstrip('/')}/chat/completions",
+        headers=headers,
         json={
             "model": model,
             "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
             "temperature": 0.9,
             "max_tokens": 1200,
+            "response_format": {"type": "json_object"},
         },
-        timeout=60,
+        timeout=600,
     )
     kind = response.headers.get("content-type", "")
     if response.status_code >= 400 or "json" not in kind:
         raise RuntimeError(f"HTTP {response.status_code} {kind} {response.text[:240]!r}")
     return response.json()["choices"][0]["message"]["content"]
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+@contextmanager
+def _local_server(llm_dir: Path):
+    """Start llama-server on the cached model; yields its base URL (or None)."""
+
+    binary, model = llm_dir / "bin" / "llama-server", llm_dir / "model.gguf"
+    if not binary.exists() or not model.exists():
+        yield None
+        return
+    port = _free_port()
+    env = {**os.environ, "LD_LIBRARY_PATH": f"{binary.parent}:{os.environ.get('LD_LIBRARY_PATH', '')}"}
+    process = subprocess.Popen(
+        [str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", "6144",
+         "-t", str(os.cpu_count() or 2), "--no-webui"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    base = f"http://127.0.0.1:{port}/v1"
+    try:
+        deadline = time.time() + 240
+        while time.time() < deadline:
+            if process.poll() is not None:
+                LOG.warning("llama-server exited: %s", (process.stderr.read() or b"")[-300:].decode(errors="ignore"))
+                yield None
+                return
+            try:
+                if requests.get(f"http://127.0.0.1:{port}/health", timeout=2).status_code == 200:
+                    break
+            except requests.RequestException:
+                pass
+            time.sleep(1)
+        else:
+            yield None
+            return
+        yield base
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
 
 def draft_tip_packs(
@@ -189,17 +246,28 @@ def draft_tip_packs(
     """One request per day: a fresh reel per category, validated. Empty on any failure."""
 
     wanted = [category for category in dict.fromkeys(categories) if category in CATEGORY_BRIEFS]
-    if not wanted or not settings.idea_engine or not settings.github_token:
+    if not wanted or not settings.idea_engine:
         return {}
     used = list(used_hooks or [])
     used += [str(pack["hook"]) for packs in SCRIPT_PACKS.values() for pack in packs]
     prompt = _prompt(wanted, winners or [], losers or [], used, headlines or [])
-    for model in [m.strip() for m in settings.idea_models.split(",") if m.strip()]:
+    if settings.llm_base_url:
+        return _drafts_from(settings.llm_base_url, settings.llm_model, prompt, wanted, used, settings.llm_api_key)
+    with _local_server(Path(settings.llm_dir)) as base:
+        if not base:
+            LOG.info("Idea engine: no model available, using hand-written packs")
+            return {}
+        return _drafts_from(base, "local", prompt, wanted, used)
+
+
+def _drafts_from(base: str, model: str, prompt: str, wanted: list[str], used: list[str], api_key: str = "") -> dict[str, DraftPack]:
+    for attempt in range(2):
+        started = time.time()
         try:
-            content = _call(model, prompt, settings)
-        except Exception as exc:  # rate limit, outage, model retired
-            LOG.warning("Idea engine: %s unavailable (%s)", model, str(exc)[:160])
-            continue
+            content = _call(base, model, prompt, api_key)
+        except Exception as exc:
+            LOG.warning("Idea engine call failed: %s", str(exc)[:200])
+            return {}
         result: dict[str, DraftPack] = {}
         for draft in _parse(content):
             category = str(draft.get("category", "")).strip()
@@ -211,7 +279,7 @@ def draft_tip_packs(
                 continue
             used.append(hook)
             result[category] = DraftPack(category, hook, beats, model)
+        LOG.info("Idea engine: %d/%d drafts passed in %.0fs", len(result), len(wanted), time.time() - started)
         if result:
-            LOG.info("Idea engine drafted %d reels with %s", len(result), model)
             return result
     return {}

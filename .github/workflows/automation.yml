@@ -22,7 +22,6 @@ concurrency:
 permissions:
   contents: write  # weekly REPORT.md commit
   issues: write    # opens an issue (an email to you) if posting breaks
-  models: read     # free GitHub Models for the daily idea engine
 
 jobs:
   automation:
@@ -59,6 +58,7 @@ jobs:
           FORCE: ${{ inputs.force || 'true' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$FORCE" != "false" ]; then
+            GITHUB_OUTPUT=/dev/null python3 scripts/needs_work.py output/content_machine.db | tail -1 >> "$GITHUB_OUTPUT"
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Manual run."
           else
@@ -116,11 +116,23 @@ jobs:
           ./scripts/install_kokoro.sh
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || echo "Piper fallback voice unavailable; Kokoro will be used."
 
+      - name: Restore idea model
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
+        uses: actions/cache@v4
+        with:
+          path: assets/llm
+          key: idea-model-qwen3-4b-v1
+
+      - name: Install idea model (free, runs on this machine)
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/install_idea_model.sh || echo "Idea model unavailable; hand-written packs will be used."
+
       - name: Run automation tick
         id: tick
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_IG_USER_ID: ${{ secrets.INSTAGRAM_IG_USER_ID }}
           INSTAGRAM_APP_ID: ${{ secrets.INSTAGRAM_APP_ID }}

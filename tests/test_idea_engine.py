@@ -26,17 +26,17 @@ def test_engine_returns_valid_drafts_and_skips_bad_ones(monkeypatch) -> None:
     }
     calls = []
 
-    def fake_call(model, prompt, settings):
-        calls.append(model)
+    def fake_call(base, model, prompt, api_key=""):
+        calls.append((base, model))
         return json.dumps(reply)
 
     monkeypatch.setattr(idea_engine, "_call", fake_call)
-    settings = Settings(github_token="test", idea_models="model-a,model-b")
+    settings = Settings(llm_base_url="http://llm.test/v1", llm_model="some-model")
     drafts = draft_tip_packs(["interview_prep", "resume_portfolio"], settings, winners=[{"hook": "x", "score": 1.0}])
     assert list(drafts) == ["interview_prep"]
     assert drafts["interview_prep"].hook.endswith(".")
-    assert calls == ["model-a"]
+    assert calls == [("http://llm.test/v1", "some-model")]
 
 
-def test_engine_is_off_without_a_token() -> None:
-    assert draft_tip_packs(["interview_prep"], Settings(github_token="")) == {}
+def test_engine_is_off_without_a_model(tmp_path) -> None:
+    assert draft_tip_packs(["interview_prep"], Settings(llm_dir=tmp_path, llm_base_url="")) == {}

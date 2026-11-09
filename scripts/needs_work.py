@@ -76,12 +76,34 @@ def decide(db_path: Path, now: datetime) -> tuple[bool, str]:
     return False, "nothing due"
 
 
+def plan_needed(db_path: Path, now: datetime) -> bool:
+    """True when today's reels are not planned yet (the run that plans needs the idea model)."""
+
+    if not db_path.exists():
+        return True
+    today = now.astimezone(TZ).date().isoformat()
+    with sqlite3.connect(db_path) as conn:
+        planned = conn.execute("SELECT COUNT(*) FROM scripts WHERE script_date = ?", (today,)).fetchone()[0]
+    return planned < POSTS_PER_DAY
+
+
 def main() -> None:
+    db_path = Path(sys.argv[1] if len(sys.argv) > 1 else "output/content_machine.db")
+    now = datetime.now(timezone.utc)
     try:
-        run, reason = decide(Path(sys.argv[1] if len(sys.argv) > 1 else "output/content_machine.db"), datetime.now(timezone.utc))
+        run, reason = decide(db_path, now)
     except Exception as exc:  # fail open: a full run is always safe
         run, reason = True, f"check failed: {exc}"
     emit(run, reason)
+    try:
+        plan = plan_needed(db_path, now)
+    except Exception:
+        plan = True
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with open(output, "a", encoding="utf-8") as handle:
+            handle.write(f"plan={'true' if plan else 'false'}\n")
+    print(f"plan={'true' if plan else 'false'}")
 
 
 if __name__ == "__main__":

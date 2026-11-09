@@ -35,10 +35,13 @@ class Settings(BaseSettings):
     # Manual runs: render and publish this many of today's next reels immediately,
     # ignoring their scheduled slots (0 = only publish what is due).
     publish_now_count: int = 0
-    # Free idea engine (GitHub Models through the Actions token, `models: read`).
-    github_token: str = ""
+    # Free idea engine: a small open model run by llama.cpp inside the runner
+    # (scripts/install_idea_model.sh), or any OpenAI-compatible endpoint.
     idea_engine: bool = True
-    idea_models: str = "openai/gpt-4.1,openai/gpt-4.1-mini,openai/gpt-4o-mini"
+    llm_dir: Path = Path("assets/llm")
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = "local"
     batch_render_size: int = 20
     dry_run: bool = True
     log_level: str = "INFO"
