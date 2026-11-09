@@ -32,3 +32,12 @@ def test_no_weights_without_enough_data(tmp_path: Path) -> None:
     db = Database(tmp_path / "db.sqlite")
     db.init_db()
     assert category_weights(db) == {}
+
+
+def test_generated_share_starts_even_and_has_bounds(tmp_path: Path) -> None:
+    from app.publishing.insights import generated_share, hook_examples
+
+    db = Database(tmp_path / "db.sqlite")
+    db.init_db()
+    assert generated_share(db) == 0.5
+    assert hook_examples(db) == ([], [])

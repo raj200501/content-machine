@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from datetime import date, datetime
 
 from app.config import Settings
@@ -9,7 +10,7 @@ from app.db import Database
 from app.planning.calendar import day_schedule
 from app.planning.topic_mixer import build_daily_topics
 from app.utils import json_loads
-from app.publishing.insights import category_weights, hook_examples, hook_weights
+from app.publishing.insights import category_weights, generated_share, hook_examples, hook_weights
 from app.writing.idea_engine import CATEGORY_BRIEFS, draft_tip_packs
 from app.writing.fact_guard import guard_script
 from app.writing.script_writer import build_script
@@ -50,6 +51,9 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         used_hooks=sorted(recent_hooks),
         headlines=headlines,
     )
+    # Generated vs hand-written: start even, then follow which earns more.
+    share = generated_share(db)
+    chooser = random.Random(target_date.toordinal())
     created = 0
     unsupported = 0
     for topic in topics:
@@ -69,9 +73,8 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
                 "metadata": topic.metadata,
             }
         )
-        package = build_script(
-            topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids, drafts.pop(topic.category, None)
-        )
+        draft = drafts.pop(topic.category, None) if chooser.random() < share else None
+        package = build_script(topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids, draft)
         recent_hooks.add(package.hook)
         recent_hook_ids.insert(0, package.metadata.get("hook_id", ""))
         guarded = guard_script(package.full_script, evidence_items)

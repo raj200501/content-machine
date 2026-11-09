@@ -167,3 +167,32 @@ def hook_examples(db: Database, top: int = 6, bottom: int = 4) -> tuple[list[dic
         return [], []
     scored.sort(key=lambda row: row["score"], reverse=True)
     return scored[:top], scored[-bottom:]
+
+
+def generated_share(db: Database, min_posts: int = 3) -> float:
+    """How often to use idea-engine drafts instead of hand-written packs (0.25 to 0.85).
+
+    Starts at an even split, then follows results: if generated reels earn more
+    saves, shares and watch time than the packs, use more of them, and fewer if not.
+    """
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT substr(json_extract(s.metadata_json, '$.hook_id'), 1, 4) AS source,
+                   COUNT(*) AS posts, SUM(i.reach) AS reach, SUM(i.shares) AS shares,
+                   SUM(i.saved) AS saved, SUM(i.likes) AS likes, AVG(i.skip_rate) AS skip_rate
+            FROM post_insights i JOIN scripts s ON s.id = i.script_id
+            WHERE json_extract(s.metadata_json, '$.hook_id') LIKE 'gen:%'
+               OR json_extract(s.metadata_json, '$.hook_id') LIKE 'pack%'
+            GROUP BY source
+            """
+        ).fetchall()
+    scores = {}
+    for source, posts, reach, shares, saved, likes, skip_rate in rows:
+        if (posts or 0) >= min_posts and reach:
+            engagement = (3 * (shares or 0) + 2 * (saved or 0) + (likes or 0)) / reach
+            scores[source] = engagement + 1 - (skip_rate if skip_rate is not None else 90) / 100
+    if "gen:" not in scores or "pack" not in scores or scores["pack"] <= 0:
+        return 0.5
+    return max(0.25, min(0.85, 0.5 * scores["gen:"] / scores["pack"]))
