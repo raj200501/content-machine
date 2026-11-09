@@ -176,8 +176,8 @@ SCRIPT_PACKS: dict[str, list[dict[str, object]]] = {
         {
             "hook": "Your two-page resume is getting skimmed. Cut it.",
             "beats": [
-                "Early-career resumes over one page usually get skimmed less, not more.",
-                "Cut anything older than high school graduation and any objective statement.",
+                "A second page doesn't get read more carefully. It gets skimmed faster.",
+                "Cut high school details and any objective statement.",
                 "Use the space for two strong projects with measurable results.",
             ],
         },

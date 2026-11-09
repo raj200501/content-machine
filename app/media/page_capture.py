@@ -100,6 +100,7 @@ class PageCapture:
     title: tuple[float, float, float, float] | None  # x, y, w, h in image px
     pay: tuple[float, float, float, float] | None  # union of the pay text
     pay_rects: list[tuple[float, float, float, float]] | None = None  # one box per line
+    url: str = ""  # where the browser actually ended up (shown in the address bar)
 
 
 def _find_pay_in_frames(page, needles: list[str], found: dict) -> None:
@@ -197,10 +198,20 @@ def capture_pages(jobs: list[dict], out_dir: Path, timeout_ms: int = 30000) -> d
                 has_touch=True,
             )
             for index, job in targets:
-                try:
-                    results[index] = _capture_one(context, job, out_dir / f"page_{index}.png", timeout_ms)
-                except Exception as exc:
-                    LOG.warning("Could not capture %s: %s", job.get("url"), str(exc)[:200])
+                options = [job.get("url")] + ([job["alt_url"]] if job.get("alt_url") else [])
+                best = None
+                for attempt, url in enumerate(options):
+                    try:
+                        name = f"page_{index}.png" if attempt == 0 else f"page_{index}_alt{attempt}.png"
+                        capture = _capture_one(context, {**job, "url": url}, out_dir / name, timeout_ms)
+                    except Exception as exc:
+                        LOG.warning("Could not capture %s: %s", url, str(exc)[:200])
+                        continue
+                    if capture is not None and (best is None or (capture.pay and not best.pay)):
+                        best = capture
+                    if best is not None and best.pay:
+                        break  # the pay is on screen; no need to try the other page
+                results[index] = best
             browser.close()
     except Exception as exc:
         LOG.warning("Browser capture unavailable: %s", str(exc)[:200])
@@ -254,7 +265,7 @@ def _capture_one(context, job: dict, path: Path, timeout_ms: int) -> PageCapture
         moved = lambda box: (box[0], box[1] - shift, box[2], box[3]) if box else None  # noqa: E731
         scale = lambda box: tuple(float(v) * SCALE for v in box) if box else None  # noqa: E731
         pay_rects = [scale(moved(box)) for box in rects] if pay else None
-        capture = PageCapture(path, int(css_height * SCALE), scale(title), scale(moved(pay)), pay_rects)
+        capture = PageCapture(path, int(css_height * SCALE), scale(title), scale(moved(pay)), pay_rects, page.url)
         path.with_suffix(".json").write_text(
             json.dumps({"url": job.get("url"), "title": capture.title, "pay": capture.pay, "pay_rects": pay_rects, "height": capture.height})
         )

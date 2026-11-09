@@ -23,3 +23,26 @@ def test_structured_board_fields() -> None:
     lever = {"salaryRange": {"currency": "USD", "interval": "per-hour-wage", "min": 40, "max": 52}}
     assert from_lever(lever).display == "$40–$52/hr"
     assert from_greenhouse({"content": "Pay: $50 - $60 per hour"}).display == "$50–$60/hr"
+
+
+def test_greenhouse_items_keep_the_hosted_page_for_pay(monkeypatch) -> None:
+    import app.source_ingest.jobs_ingest as ingest
+    from app.config import Settings
+    from app.models import SourceDefinition
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    board = {"jobs": [{"id": 8209134, "title": "Software Engineering Intern", "absolute_url": "https://www.mongodb.com/careers/job/?gh_jid=8209134", "location": {"name": "Austin"}, "updated_at": "2026-11-01T00:00:00Z"}]}
+    detail = {"pay_input_ranges": [{"min_cents": 8700000, "max_cents": 12400000, "currency_type": "USD"}]}
+    monkeypatch.setattr(ingest.requests, "get", lambda url, **_: Response(detail if url.endswith("8209134") else board))
+    source = SourceDefinition(name="mongodb", source_type="job_board", url="https://boards-api.greenhouse.io/v1/boards/mongodb/jobs", board_type="greenhouse")
+    items = ingest._greenhouse(source, Settings())
+    assert items and items[0].metadata["hosted_url"] == "https://job-boards.greenhouse.io/mongodb/jobs/8209134"

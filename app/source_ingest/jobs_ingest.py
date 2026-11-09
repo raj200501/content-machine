@@ -75,6 +75,7 @@ def _build_candidate(
     published_at: str | None,
     location: str = "",
     pay: PayRange | None = None,
+    hosted_url: str = "",
 ) -> SourceItemCandidate | None:
     if pay:
         text = f"{text} Pay range: {pay.display}."
@@ -103,6 +104,9 @@ def _build_candidate(
             "job_title": title.strip(),
             "pay": pay.display if pay else "",
             "pay_spoken": pay.spoken if pay else "",
+            # Greenhouse's own page for the posting: it shows the pay range even when
+            # the company's careers site (the main URL) leaves it out.
+            "hosted_url": hosted_url,
         },
     )
 
@@ -143,8 +147,14 @@ def _greenhouse(source: SourceDefinition, settings: Settings) -> list[SourceItem
         location = (job.get("location") or {}).get("name", "")
         text = f"{title}. {_company_name(source)}. {location}. Public Greenhouse listing."
         pay = _greenhouse_pay(source, job, settings)
+        token = re.search(r"/boards/([^/]+)/", source.url)
+        hosted = (
+            f"https://job-boards.greenhouse.io/{token.group(1)}/jobs/{job.get('id')}"
+            if token and job.get("id") and "greenhouse.io" not in url
+            else ""
+        )
         candidate = _build_candidate(
-            source, url, title, text, job.get("first_published") or job.get("updated_at"), location, pay
+            source, url, title, text, job.get("first_published") or job.get("updated_at"), location, pay, hosted
         )
         if candidate:
             items.append(candidate)

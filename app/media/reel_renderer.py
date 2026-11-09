@@ -739,7 +739,7 @@ def attach_captures(scenes: list[Scene], settings: Settings, work_dir: Path) -> 
             raw = Image.open(capture.image_path).convert("RGB")
         except OSError:
             continue
-        scene.page = _with_browser_chrome(raw, str(scene.data.get("url", "")))
+        scene.page = _with_browser_chrome(raw, capture.url or str(scene.data.get("url", "")))
         shift = lambda box: (box[0], box[1] + BROWSER_HEADER, box[2], box[3]) if box else None  # noqa: E731
         scene.page_title, scene.page_pay = shift(capture.title), shift(capture.pay)
         scene.page_pay_rects = [shift(box) for box in capture.pay_rects] if capture.pay_rects else None

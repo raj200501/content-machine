@@ -118,6 +118,7 @@ def _job_details(item: dict, day: str) -> dict:
         "pay_spoken": str(metadata.get("pay_spoken") or ""),
         "posted_days": _posted_days(item, day),
         "url": str(item.get("source_url") or ""),
+        "alt_url": str(metadata.get("hosted_url") or ""),
     }
 
 
@@ -177,6 +178,7 @@ def _job_alert(
                 "pay": job["pay"],
                 "posted_days": job["posted_days"],
                 "url": job["url"],
+                "alt_url": job["alt_url"],
             }
         )
     return hook, beats, scenes, hook_choice.id
