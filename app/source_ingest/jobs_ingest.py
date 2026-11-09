@@ -190,6 +190,63 @@ def _lever(source: SourceDefinition, settings: Settings) -> list[SourceItemCandi
     return items
 
 
+ASHBY_INTERVALS = {"1 HOUR": "hour", "1 MONTH": "month", "1 YEAR": "year", "HOUR": "hour", "MONTH": "month", "YEAR": "year"}
+
+
+def _ashby_pay(job: dict) -> PayRange | None:
+    compensation = job.get("compensation") or {}
+    for component in compensation.get("summaryComponents") or []:
+        if str(component.get("compensationType", "")).lower() not in {"salary", "hourly", ""}:
+            continue
+        unit = ASHBY_INTERVALS.get(str(component.get("interval", "")).upper())
+        try:
+            low, high = float(component.get("minValue") or 0), float(component.get("maxValue") or 0)
+        except (TypeError, ValueError):
+            continue
+        if unit and high > 0:
+            pay = PayRange(min(low or high, high), high, unit, str(component.get("currencyCode") or "USD").upper())
+            if 8 <= (pay.high if unit == "hour" else pay.high / (12 if unit == "month" else 1)) and pay.high <= 900000:
+                return pay
+    from app.source_ingest.pay import from_text
+
+    return from_text(str(compensation.get("compensationTierSummary") or ""))
+
+
+def _ashby(source: SourceDefinition, settings: Settings) -> list[SourceItemCandidate]:
+    """Ashby's public posting API (used by many AI startups); includes listed pay."""
+
+    response = requests.get(
+        source.url,
+        params={"includeCompensation": "true"},
+        timeout=settings.request_timeout_seconds,
+        headers={"User-Agent": settings.user_agent},
+    )
+    response.raise_for_status()
+    items: list[SourceItemCandidate] = []
+    limit = min(source.max_items, settings.max_source_items_per_ingest)
+    for job in response.json().get("jobs", []):
+        if job.get("isListed") is False:
+            continue
+        title = (job.get("title") or "").strip()
+        if not _wanted(title, source.filters):
+            continue
+        location = job.get("location") or ""
+        if job.get("isRemote") and "remote" not in location.lower():
+            location = f"{location} (Remote)".strip()
+        url = job.get("jobUrl") or source.url
+        text = f"{title}. {_company_name(source)}. {location}. Public Ashby listing."
+        try:
+            pay = _ashby_pay(job)
+        except Exception:  # pragma: no cover - never drop a posting over pay parsing
+            pay = None
+        candidate = _build_candidate(source, url, title, text, job.get("publishedAt"), location, pay)
+        if candidate:
+            items.append(candidate)
+        if len(items) >= limit:
+            break
+    return items
+
+
 def _generic_html(source: SourceDefinition, settings: Settings) -> list[SourceItemCandidate]:
     response = requests.get(source.url, timeout=settings.request_timeout_seconds, headers={"User-Agent": settings.user_agent})
     response.raise_for_status()
@@ -216,4 +273,6 @@ def ingest_job_board(source: SourceDefinition, settings: Settings) -> list[Sourc
         return _greenhouse(source, settings)
     if source.board_type == "lever":
         return _lever(source, settings)
+    if source.board_type == "ashby":
+        return _ashby(source, settings)
     return _generic_html(source, settings)

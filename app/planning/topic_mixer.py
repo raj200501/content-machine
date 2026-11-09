@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, timedelta
 from itertools import cycle
 
 from app.models import PlannedTopic
@@ -170,8 +170,37 @@ def build_daily_topics(
             if company:
                 company_counts[company.lower()] += 1
 
+    source_items = open_postings(source_items, recent_scripts, run_date)
     source_items = sorted(source_items, key=lambda item: (item["freshness_score"], item["relevance_score"]), reverse=True)
     grouped_jobs = _job_groups(source_items, company_counts)
+    return _build_topics(run_date, schedule_slots, source_items, grouped_jobs, company_counts, hook_counts, recent_topics, category_multipliers)
+
+
+def open_postings(source_items: list[dict], recent_scripts: list[dict], run_date: date) -> list[dict]:
+    """Drop postings featured in the last two weeks, and ones no longer on their board."""
+
+    recent_urls = {
+        str(item.get("source_url") or "")
+        for script in recent_scripts
+        if str(script.get("created_at", ""))[:10] >= (run_date - timedelta(days=14)).isoformat()
+        for item in (json_loads(script.get("evidence_json"), default=[]) or [])
+        if item.get("source_url")
+    }
+    # Job postings must still be listed on the board (seen in the last 3 days).
+    still_listed_since = (run_date - timedelta(days=3)).isoformat()
+    return [
+        item for item in source_items
+        if not (
+            item["source_type"] == "job_board"
+            and (
+                str(item.get("source_url") or "") in recent_urls
+                or (bool(item.get("fetched_at")) and str(item["fetched_at"])[:10] < still_listed_since)
+            )
+        )
+    ]
+
+
+def _build_topics(run_date, schedule_slots, source_items, grouped_jobs, company_counts, hook_counts, recent_topics, category_multipliers):
     themed = _items_by_theme(source_items)
     evergreen_cursors = {name: cycle(values) for name, values in EVERGREEN_ANGLES.items()}
 

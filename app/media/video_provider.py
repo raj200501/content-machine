@@ -38,6 +38,14 @@ def render_with_fallback(settings: Settings, script_row: dict, output_root: Path
     ensure_directory(output_root)
     if (script_row.get("category") or "") == "jobs_roundup":
         return render_carousel(settings, script_row, output_root)
+    from app.utils import json_loads
+    from app.writing.formats import STUDIO_FORMATS
+
+    metadata = json_loads(script_row.get("metadata_json"), default={}) or {}
+    if metadata.get("format") in STUDIO_FORMATS:
+        from app.media.studio import render_studio
+
+        return render_studio(settings, script_row, output_root)
     slug = slugify(f"{script_row['id']}-{hash_text(script_row['hook'])[:8]}")
     provider_error = None
 

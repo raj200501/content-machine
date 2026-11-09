@@ -446,6 +446,823 @@
       "description": "Second placeholder for a public recruiting/interview channel",
       "enabled": false,
       "max_items": 10
+    },
+    {
+      "name": "airbnb-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/airbnb/jobs",
+      "company": "Airbnb",
+      "category": "jobs",
+      "description": "Public Airbnb Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "dropbox-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/dropbox/jobs",
+      "company": "Dropbox",
+      "category": "jobs",
+      "description": "Public Dropbox Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "reddit-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/reddit/jobs",
+      "company": "Reddit",
+      "category": "jobs",
+      "description": "Public Reddit Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "discord-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/discord/jobs",
+      "company": "Discord",
+      "category": "jobs",
+      "description": "Public Discord Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "instacart-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/instacart/jobs",
+      "company": "Instacart",
+      "category": "jobs",
+      "description": "Public Instacart Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "asana-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/asana/jobs",
+      "company": "Asana",
+      "category": "jobs",
+      "description": "Public Asana Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "gusto-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/gusto/jobs",
+      "company": "Gusto",
+      "category": "jobs",
+      "description": "Public Gusto Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "twilio-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/twilio/jobs",
+      "company": "Twilio",
+      "category": "jobs",
+      "description": "Public Twilio Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "okta-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/okta/jobs",
+      "company": "Okta",
+      "category": "jobs",
+      "description": "Public Okta Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "gitlab-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/gitlab/jobs",
+      "company": "GitLab",
+      "category": "jobs",
+      "description": "Public GitLab Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "elastic-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/elastic/jobs",
+      "company": "Elastic",
+      "category": "jobs",
+      "description": "Public Elastic Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "anthropic-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs",
+      "company": "Anthropic",
+      "category": "jobs",
+      "description": "Public Anthropic Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "andurilindustries-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/andurilindustries/jobs",
+      "company": "Anduril",
+      "category": "jobs",
+      "description": "Public Anduril Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "nuro-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/nuro/jobs",
+      "company": "Nuro",
+      "category": "jobs",
+      "description": "Public Nuro Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "waymo-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/waymo/jobs",
+      "company": "Waymo",
+      "category": "jobs",
+      "description": "Public Waymo Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "brex-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/brex/jobs",
+      "company": "Brex",
+      "category": "jobs",
+      "description": "Public Brex Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "doordashusa-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/doordashusa/jobs",
+      "company": "DoorDash",
+      "category": "jobs",
+      "description": "Public DoorDash Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "squarespace-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/squarespace/jobs",
+      "company": "Squarespace",
+      "category": "jobs",
+      "description": "Public Squarespace Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "chime-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/chime/jobs",
+      "company": "Chime",
+      "category": "jobs",
+      "description": "Public Chime Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "sofi-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/sofi/jobs",
+      "company": "SoFi",
+      "category": "jobs",
+      "description": "Public SoFi Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "nextdoor-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/nextdoor/jobs",
+      "company": "Nextdoor",
+      "category": "jobs",
+      "description": "Public Nextdoor Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "airtable-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/airtable/jobs",
+      "company": "Airtable",
+      "category": "jobs",
+      "description": "Public Airtable Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "webflow-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/webflow/jobs",
+      "company": "Webflow",
+      "category": "jobs",
+      "description": "Public Webflow Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "hubspot-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/hubspot/jobs",
+      "company": "HubSpot",
+      "category": "jobs",
+      "description": "Public HubSpot Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "rubrik-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/rubrik/jobs",
+      "company": "Rubrik",
+      "category": "jobs",
+      "description": "Public Rubrik Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "flexport-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/flexport/jobs",
+      "company": "Flexport",
+      "category": "jobs",
+      "description": "Public Flexport Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "toast-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/toast/jobs",
+      "company": "Toast",
+      "category": "jobs",
+      "description": "Public Toast Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "benchling-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/benchling/jobs",
+      "company": "Benchling",
+      "category": "jobs",
+      "description": "Public Benchling Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "grammarly-greenhouse",
+      "source_type": "job_board",
+      "board_type": "greenhouse",
+      "url": "https://boards-api.greenhouse.io/v1/boards/grammarly/jobs",
+      "company": "Grammarly",
+      "category": "jobs",
+      "description": "Public Grammarly Greenhouse board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "plaid-lever",
+      "source_type": "job_board",
+      "board_type": "lever",
+      "url": "https://api.lever.co/v0/postings/plaid?mode=json",
+      "company": "Plaid",
+      "category": "jobs",
+      "description": "Public Plaid Lever board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "netflix-lever",
+      "source_type": "job_board",
+      "board_type": "lever",
+      "url": "https://api.lever.co/v0/postings/netflix?mode=json",
+      "company": "Netflix",
+      "category": "jobs",
+      "description": "Public Netflix Lever board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "lucidmotors-lever",
+      "source_type": "job_board",
+      "board_type": "lever",
+      "url": "https://api.lever.co/v0/postings/lucidmotors?mode=json",
+      "company": "Lucid",
+      "category": "jobs",
+      "description": "Public Lucid Lever board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "rippling-lever",
+      "source_type": "job_board",
+      "board_type": "lever",
+      "url": "https://api.lever.co/v0/postings/rippling?mode=json",
+      "company": "Rippling",
+      "category": "jobs",
+      "description": "Public Rippling Lever board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "openai-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/openai",
+      "company": "OpenAI",
+      "category": "jobs",
+      "description": "Public OpenAI Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "ramp-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/ramp",
+      "company": "Ramp",
+      "category": "jobs",
+      "description": "Public Ramp Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "notion-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/notion",
+      "company": "Notion",
+      "category": "jobs",
+      "description": "Public Notion Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "linear-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/linear",
+      "company": "Linear",
+      "category": "jobs",
+      "description": "Public Linear Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "replit-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/replit",
+      "company": "Replit",
+      "category": "jobs",
+      "description": "Public Replit Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "cohere-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/cohere",
+      "company": "Cohere",
+      "category": "jobs",
+      "description": "Public Cohere Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "vercel-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/vercel",
+      "company": "Vercel",
+      "category": "jobs",
+      "description": "Public Vercel Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "perplexity-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/perplexity",
+      "company": "Perplexity",
+      "category": "jobs",
+      "description": "Public Perplexity Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "snowflake-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/snowflake",
+      "company": "Snowflake",
+      "category": "jobs",
+      "description": "Public Snowflake Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
+    },
+    {
+      "name": "deepgram-ashby",
+      "source_type": "job_board",
+      "board_type": "ashby",
+      "url": "https://api.ashbyhq.com/posting-api/job-board/deepgram",
+      "company": "Deepgram",
+      "category": "jobs",
+      "description": "Public Deepgram Ashby board",
+      "max_items": 6,
+      "filters": [
+        "intern",
+        "internship",
+        "new grad",
+        "university grad",
+        "university graduate",
+        "early career",
+        "graduate"
+      ]
     }
   ]
 }

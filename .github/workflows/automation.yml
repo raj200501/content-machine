@@ -117,14 +117,14 @@ jobs:
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || echo "Piper fallback voice unavailable; Kokoro will be used."
 
       - name: Restore idea model
-        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
+        if: env.IDEA_ENGINE == 'true' && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
         uses: actions/cache@v4
         with:
           path: assets/llm
           key: idea-model-qwen3-4b-v1
 
       - name: Install idea model (free, runs on this machine)
-        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
+        if: env.IDEA_ENGINE == 'true' && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && steps.window.outputs.plan == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/install_idea_model.sh || echo "Idea model unavailable; hand-written packs will be used."
@@ -162,6 +162,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TICK_OUTCOME: ${{ steps.tick.outcome }}
         run: python3 scripts/health_issue.py output/last_tick.json || true
+
+      - name: Update the link-in-bio jobs page (GitHub Pages)
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TIMEZONE: America/New_York
+        run: |
+          python -m app.cli jobs-page --out site/index.html || exit 0
+          cd site
+          touch .nojekyll
+          git init -q -b gh-pages
+          git config user.name "careerstacked-bot"
+          git config user.email "careerstacked-bot@users.noreply.github.com"
+          git add -A
+          git commit -qm "Jobs page $(date -u +%FT%H:%MZ)"
+          git push -fq "https://x-access-token:${TOKEN}@github.com/${REPO}.git" gh-pages || echo "Pages push failed"
 
       - name: Weekly report (Mondays)
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'

@@ -326,6 +326,10 @@ class Database:
             ).fetchone()
             return row is not None
 
+    def touch_source_item(self, source_url: str, fetched_at: str) -> None:
+        with self.connect() as conn:
+            conn.execute("UPDATE source_items SET fetched_at = ? WHERE source_url = ?", (fetched_at, source_url))
+
     def insert_source_item(
         self,
         source_id: int | None,

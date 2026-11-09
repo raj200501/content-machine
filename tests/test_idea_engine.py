@@ -31,7 +31,7 @@ def test_engine_returns_valid_drafts_and_skips_bad_ones(monkeypatch) -> None:
         return json.dumps(reply)
 
     monkeypatch.setattr(idea_engine, "_call", fake_call)
-    settings = Settings(llm_base_url="http://llm.test/v1", llm_model="some-model")
+    settings = Settings(llm_base_url="http://llm.test/v1", llm_model="some-model", idea_engine=True)
     drafts = draft_tip_packs(["interview_prep", "resume_portfolio"], settings, winners=[{"hook": "x", "score": 1.0}])
     assert list(drafts) == ["interview_prep"]
     assert drafts["interview_prep"].hook.endswith(".")

@@ -42,6 +42,8 @@ def run_refresh_sources(db: Database, settings: Settings) -> dict[str, int]:
             payload = asdict(candidate)
             payload["normalized_title"] = normalize_title(candidate.title)
             if db.source_item_exists(candidate.source_url, payload["normalized_title"], candidate.duplicate_hash):
+                # Still on the job board today: mark it as seen so it counts as open.
+                db.touch_source_item(candidate.source_url, payload["fetched_at"])
                 continue
             row_id = db.insert_source_item(source_id, payload)
             if row_id:

@@ -63,6 +63,57 @@ def _pluck(semitones: float, seconds: float) -> np.ndarray:
     return (tone * decay * attack).astype(np.float32)
 
 
+def _kick(seconds: float = 0.3) -> np.ndarray:
+    n = int(seconds * RATE)
+    t = np.arange(n, dtype=np.float32) / RATE
+    sweep = 45 + 85 * np.exp(-t * 28)
+    phase = 2 * np.pi * np.cumsum(sweep) / RATE
+    return (np.sin(phase) * np.exp(-t * 9)).astype(np.float32)
+
+
+def _snare(rng: np.random.Generator, seconds: float = 0.18) -> np.ndarray:
+    n = int(seconds * RATE)
+    t = np.arange(n, dtype=np.float32) / RATE
+    noise = rng.standard_normal(n).astype(np.float32)
+    noise = noise - np.concatenate([[0], noise[:-1]]) * 0.6  # tilt toward the top end
+    body = 0.5 * np.sin(2 * np.pi * 185 * t)
+    return ((0.55 * noise + body) * np.exp(-t * 22)).astype(np.float32)
+
+
+def _hat(rng: np.random.Generator, seconds: float = 0.05) -> np.ndarray:
+    n = int(seconds * RATE)
+    t = np.arange(n, dtype=np.float32) / RATE
+    noise = rng.standard_normal(n).astype(np.float32)
+    noise = noise - np.concatenate([[0], noise[:-1]])  # crude high-pass
+    return (noise * np.exp(-t * 70)).astype(np.float32)
+
+
+def _drums(total: int, beat: float, rng: np.random.Generator) -> np.ndarray:
+    """A light pop/lo-fi groove: kick on 1 and 3, snare on 2 and 4, eighth hats."""
+
+    out = np.zeros((total, 2), dtype=np.float32)
+    kick, snare, hat = _kick(), _snare(rng), _hat(rng)
+
+    def place(sample: np.ndarray, at: float, level: float, pan: float = 0.5) -> None:
+        start = int(at * RATE)
+        if start >= total:
+            return
+        stop = min(start + sample.size, total)
+        out[start:stop, 0] += sample[: stop - start] * level * (1 - pan) * 2
+        out[start:stop, 1] += sample[: stop - start] * level * pan * 2
+
+    steps = int(total / RATE / (beat / 2)) + 1
+    for step in range(steps):
+        at = step * beat / 2
+        in_bar = step % 8
+        if in_bar in (0, 4) or (in_bar == 7 and rng.random() < 0.3):
+            place(kick, at, 0.55)
+        if in_bar in (2, 6):
+            place(snare, at, 0.22, 0.48)
+        place(hat, at + (0.012 if step % 2 else 0.0), 0.06 if step % 2 else 0.09, 0.62)
+    return out
+
+
 def generate_music_bed(output_path: Path, duration: float, seed: int = 0) -> Path:
     """Write a stereo WAV of the requested length."""
 
@@ -103,6 +154,11 @@ def generate_music_bed(output_path: Path, duration: float, seed: int = 0) -> Pat
     freqs = np.fft.rfftfreq(mix.shape[0], d=1.0 / RATE)
     rolloff = 1.0 / (1.0 + (freqs / 1800.0) ** 4)
     mix = np.fft.irfft(spectrum * rolloff[:, None], n=mix.shape[0], axis=0).astype(np.float32)
+    # A beat under the pads gives the reel forward motion (drums start after the hook's first second).
+    drums = _drums(total, beat, rng)
+    drums[: int(0.9 * RATE)] *= np.linspace(0.0, 1.0, int(0.9 * RATE), dtype=np.float32)[:, None]
+    peak_pads = float(np.max(np.abs(mix))) or 1.0
+    mix = mix / peak_pads + drums * 0.9
 
     mix = mix[: int(duration * RATE)]
     fade = min(int(1.0 * RATE), mix.shape[0])

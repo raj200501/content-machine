@@ -280,6 +280,23 @@ def automation_tick() -> None:
     status_path.write_text(json.dumps(stats, default=str), encoding="utf-8")
 
 
+@app.command("jobs-page")
+def jobs_page(out: Path = typer.Option(Path("site/index.html"), help="Where to write the page")) -> None:
+    """The link-in-bio page: every open role we track, with pay and apply links."""
+    db, settings = _ctx()
+    db.init_db()
+    from datetime import datetime
+
+    from app.planning.topic_mixer import open_postings
+    from app.workflows.jobs_page import build_jobs_page
+
+    now = datetime.now(settings.tzinfo)
+    items = open_postings(db.recent_source_items(days=30, limit=1000), [], now.date())
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(build_jobs_page(items, settings.brand_handle, now), encoding="utf-8")
+    console.print(f"wrote {out}")
+
+
 @app.command("weekly-report")
 def weekly_report(out: Path = typer.Option(Path("REPORT.md"), help="Where to write the report")) -> None:
     db, settings = _ctx()

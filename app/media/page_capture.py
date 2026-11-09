@@ -218,10 +218,23 @@ def capture_pages(jobs: list[dict], out_dir: Path, timeout_ms: int = 30000) -> d
     return {key: value for key, value in results.items() if value is not None}
 
 
+# Text that means the page is an error, a bot wall or a closed role. Never show these.
+ERROR_PAGE_FLAGS = (
+    "verify you are human", "access denied", "page not found", "no longer accepting", "bad gateway",
+    "error code 5", "gateway time-out", "gateway timeout", "service unavailable", "host error",
+    "internal server error", "job not found", "position has been filled", "no longer available",
+    "this job is closed", "job you are looking for", "something went wrong", "just a moment",
+)
+
+
 def _capture_one(context, job: dict, path: Path, timeout_ms: int) -> PageCapture | None:
     page = context.new_page()
     try:
-        page.goto(job["url"], wait_until="domcontentloaded", timeout=timeout_ms)
+        response = page.goto(job["url"], wait_until="domcontentloaded", timeout=timeout_ms)
+        if response is not None and response.status >= 400:
+            path.with_suffix(".json").write_text(json.dumps({"url": job.get("url"), "skipped": f"HTTP {response.status}"}))
+            LOG.info("Skipping capture of %s: HTTP %s", job.get("url"), response.status)
+            return None
         try:
             page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
@@ -234,7 +247,7 @@ def _capture_one(context, job: dict, path: Path, timeout_ms: int) -> PageCapture
             _find_pay_in_frames(page, needles, found)
         title = found.get("title")
         text = page.inner_text("body")[:4000].lower()
-        flags = ("verify you are human", "access denied", "page not found", "no longer accepting")
+        flags = ERROR_PAGE_FLAGS
         if not title or any(flag in text for flag in flags):
             # Not a usable job page (error page, bot wall, closed role): the reel uses a card.
             reason = "no title" if not title else next(flag for flag in flags if flag in text)

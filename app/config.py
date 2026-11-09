@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     publish_now_count: int = 0
     # Free idea engine: a small open model run by llama.cpp inside the runner
     # (scripts/install_idea_model.sh), or any OpenAI-compatible endpoint.
-    idea_engine: bool = True
+    idea_engine: bool = False  # the free 4B model wrote off-topic tips; formats + libraries replace it
+    studio_formats: bool = True
     llm_dir: Path = Path("assets/llm")
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -78,7 +79,7 @@ class Settings(BaseSettings):
     kokoro_model_path: str = ""
     kokoro_voices_path: str = ""
     kokoro_voice: str = "af_heart"
-    kokoro_speed: float = 1.15
+    kokoro_speed: float = 1.0
     voice_pause_after_hook: float = 0.32
     voice_pause_between_lines: float = 0.2
     # Soft generated music bed under the voice (no licensed audio needed).

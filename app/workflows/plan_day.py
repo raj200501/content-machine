@@ -43,14 +43,23 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         for item in source_items
         if item.get("source_type") != "job_board" and item.get("title")
     ][:8]
-    drafts = draft_tip_packs(
-        [topic.category for topic in topics if topic.category in CATEGORY_BRIEFS],
-        settings,
-        winners=winners,
-        losers=losers,
-        used_hooks=sorted(recent_hooks),
-        headlines=headlines,
-    )
+    drafts = {}
+    if settings.idea_engine:
+        drafts = draft_tip_packs(
+            [topic.category for topic in topics if topic.category in CATEGORY_BRIEFS],
+            settings,
+            winners=winners,
+            losers=losers,
+            used_hooks=sorted(recent_hooks),
+            headlines=headlines,
+        )
+    # Research-backed formats built from real data and the checked libraries.
+    planner = None
+    if settings.studio_formats:
+        from app.planning.format_planner import DayPlanner
+        from app.planning.topic_mixer import open_postings
+
+        planner = DayPlanner(open_postings(source_items, recent_scripts, target_date), recent_hook_ids, target_date, source_items)
     # Generated vs hand-written: start even, then follow which earns more.
     share = generated_share(db)
     chooser = random.Random(target_date.toordinal())
@@ -74,13 +83,26 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
             }
         )
         draft = drafts.pop(topic.category, None) if chooser.random() < share else None
-        package = build_script(topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids, draft)
+        studio = planner.build(topic) if planner is not None else None
+        if studio is not None:
+            from app.planning.format_planner import to_package
+
+            package = to_package(topic, studio, evidence_items)
+        else:
+            package = build_script(topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids, draft)
         recent_hooks.add(package.hook)
         recent_hook_ids.insert(0, package.metadata.get("hook_id", ""))
-        guarded = guard_script(package.full_script, evidence_items)
-        fact_status = "passed" if guarded.passed else "softened"
-        if not guarded.passed:
-            unsupported += 1
+        if studio is not None:
+            # Numbers come straight from postings or are computed from them; keep them as written.
+            from types import SimpleNamespace
+
+            guarded = SimpleNamespace(passed=True, script_text=package.full_script, claims=[])
+            fact_status = "computed"
+        else:
+            guarded = guard_script(package.full_script, evidence_items)
+            fact_status = "passed" if guarded.passed else "softened"
+            if not guarded.passed:
+                unsupported += 1
 
         script_id = db.insert_script(
             {
