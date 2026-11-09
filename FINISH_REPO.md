@@ -20,8 +20,8 @@ Everything below happens in GitHub Actions at no cost, with nobody watching:
 |---|---|
 | Every posting slot (8:00, 11:30, 15:00, 18:30, 22:00 New York) | `clock.yml` starts `automation.yml`, which posts the reel that is due (at most one per run, 100+ minutes apart). |
 | First run of the day | Pulls fresh postings (with pay) from 19 job boards and hiring news, collects yesterday's Instagram stats, then plans the day. |
-| Planning | Job reels use the real postings. Tip reels come from the **idea engine**: a small open AI model (Qwen3 4B) that runs inside the GitHub runner, with no account or key, writes new ideas. It is told which hooks got the most saves, shares and watch time on this account and which flopped, plus today's headlines. Drafts that break the rules (stats, money, repeats, wrong length) are thrown out and a hand-written pack is used instead. |
-| Every post | Hook choice and the posting mix lean toward what has performed best (`app/publishing/insights.py`). |
+| Planning | Each slot gets a research-backed format built from real data: a single job alert (pay on frame one, the real posting as proof, how the pay compares to the median of every role tracked, who it's for, a tip), a still-hiring countdown, an intern pay tier list (Saturdays), a live resume redline, an interview chat, or a link-edit search hack. Postings are never repeated within two weeks and must still be listed on their board. Tip material comes from hand-checked libraries (`app/writing/libraries.py`); the free AI writer is off by default because it wrote off-topic tips. |
+| Every post | The posting mix and which library items come back lean toward what earned the most saves, shares and watch time (`app/publishing/insights.py`). The link-in-bio page (https://raj200501.github.io/content-machine/) is rebuilt with every open role and its pay. |
 | Mondays | `REPORT.md` is updated with followers, top posts and what the system is learning. |
 | If posting breaks | An issue titled "Instagram posting is failing" is opened (GitHub emails you) with what to do. It closes itself after the next successful post. |
 

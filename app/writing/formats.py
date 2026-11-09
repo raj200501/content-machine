@@ -158,10 +158,10 @@ def _caption_for_jobs(jobs: list[JobRecord], lead: str, closer: str) -> str:
 def _pct_phrase(pct: float, count: int, level: str) -> str | None:
     pool = "intern roles" if level == "intern" else "new grad roles"
     if pct >= 8:
-        return f"That range sits {round(pct)}% above the median of the {count} {pool} I track."
+        return f"That's {round(pct)}% above the median of the {count} {pool} I track."
     if pct <= -8:
-        return f"That range sits {round(-pct)}% below the median of the {count} {pool} I track."
-    return f"That range is right around the median of the {count} {pool} I track."
+        return f"That's {round(-pct)}% below the median of the {count} {pool} I track."
+    return f"That's right around the median of the {count} {pool} I track."
 
 
 def rankable(job: JobRecord) -> bool:
@@ -173,11 +173,12 @@ def rankable(job: JobRecord) -> bool:
     return not (job.level == "intern" and job.pay.unit == "year")
 
 
-def list_pay(job: JobRecord) -> str:
-    """Pay as shown in ranked lists: hourly for interns (monthly stipends converted)."""
+def list_pay(job: JobRecord, spoken: bool = False) -> str:
+    """Pay as shown in ranked lists: hourly for interns (monthly stipends converted).
+    spoken=True says "about" instead of the "~" shown on screen."""
 
     if job.level == "intern" and job.pay and job.pay.unit == "month":
-        return f"~${job.top_pay:.0f}/hr"
+        return f"{'about ' if spoken else '~'}${job.top_pay:.0f}/hr"
     return job.pay_headline()
 
 
@@ -189,13 +190,13 @@ def job_alert(job: JobRecord, market: Market, rng: random.Random) -> FormatScrip
     pay = job.pay_headline()
     fresh = job.days_old is not None and job.days_old <= 3
     variants = [
-        ("pays", f"{job.company} is paying {role}s up to {pay}, and it's still open."),
-        ("just_posted" if fresh else "open_now", f"{job.company} just posted a {role} role that pays up to {pay}." if fresh else f"This {role} role at {job.company} pays up to {pay}. Still open."),
+        ("pays", f"{job.company} pays {role}s up to {pay}."),
+        ("just_posted" if fresh else "open_now", f"{job.company} just posted a {role} role paying {pay}." if fresh else f"This {role} role at {job.company} pays {pay}."),
     ]
     variant, hook = variants[rng.randrange(len(variants))]
     lines = [hook]
     scenes = [_job_scene(job, "alert_hook", badge="JUST POSTED" if fresh else "STILL OPEN")]
-    lines.append(rng.choice(["That's straight from their job posting.", "Here's the posting, pay range and all."]))
+    lines.append(rng.choice(["It's still open. Here's the posting.", "Still open. That's straight from the posting."]))
     scenes.append(_job_scene(job, "proof"))
     compared = market.compare(job) if rankable(job) else None
     if compared:
@@ -257,7 +258,7 @@ def countdown(jobs: list[JobRecord], market: Market, rng: random.Random) -> Form
         floor = f"${int(floor_value // 10000 * 10)}K+"
     hook = rng.choice(
         [
-            f"{n} {level_word} still hiring right now. Number one pays {list_pay(top)}.",
+            f"{n} {level_word} still hiring right now. Number one pays {list_pay(top, spoken=True)}.",
             f"{n} {level_word} still hiring that pay {floor}. Wait for number one.",
         ]
     )
@@ -268,12 +269,12 @@ def countdown(jobs: list[JobRecord], market: Market, rng: random.Random) -> Form
     words = {5: "five", 4: "four", 3: "three", 2: "two", 1: "one"}
     for rank, job in zip(range(n, 0, -1), picks):
         if rank == 1:
-            line = f"And number one: {job.company}, up to {list_pay(job)} for {short_role(job)}s."
+            line = f"And number one: {job.company}, up to {list_pay(job, spoken=True)} for {short_role(job)}s."
             compared = market.compare(job)
             if compared and compared[0] >= 25:
                 line += f" That's {round(compared[0])}% above the median."
         else:
-            line = f"Number {words[rank]}: {job.company}, up to {list_pay(job)}."
+            line = f"Number {words[rank]}: {job.company}, up to {list_pay(job, spoken=True)}."
         lines.append(line)
         scenes.append(_job_scene(job, "countdown_item", rank=rank, n=n, max_pay=top.top_pay, top_pay_value=job.top_pay, pay=list_pay(job)))
     lines.append(f"Every apply link is in my bio. {rng.choice(['Save this before they close.', 'Save this, then send it to a friend.'])}")
