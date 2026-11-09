@@ -9,7 +9,8 @@ from app.db import Database
 from app.planning.calendar import day_schedule
 from app.planning.topic_mixer import build_daily_topics
 from app.utils import json_loads
-from app.publishing.insights import category_weights, hook_weights
+from app.publishing.insights import category_weights, hook_examples, hook_weights
+from app.writing.idea_engine import CATEGORY_BRIEFS, draft_tip_packs
 from app.writing.fact_guard import guard_script
 from app.writing.script_writer import build_script
 
@@ -33,6 +34,22 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         (json_loads(script.get("metadata_json"), default={}) or {}).get("hook_id", "")
         for script in sorted(recent_scripts, key=lambda row: str(row.get("scheduled_at", "")), reverse=True)
     ]
+    # Fresh ideas for today's tip slots, steered by what has worked on this account
+    # and by today's hiring headlines. Falls back to the hand-written packs.
+    winners, losers = hook_examples(db)
+    headlines = [
+        str(item.get("title", ""))
+        for item in source_items
+        if item.get("source_type") != "job_board" and item.get("title")
+    ][:8]
+    drafts = draft_tip_packs(
+        [topic.category for topic in topics if topic.category in CATEGORY_BRIEFS],
+        settings,
+        winners=winners,
+        losers=losers,
+        used_hooks=sorted(recent_hooks),
+        headlines=headlines,
+    )
     created = 0
     unsupported = 0
     for topic in topics:
@@ -52,7 +69,9 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
                 "metadata": topic.metadata,
             }
         )
-        package = build_script(topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids)
+        package = build_script(
+            topic, evidence_items, recent_hooks, hook_performance, recent_hook_ids, drafts.pop(topic.category, None)
+        )
         recent_hooks.add(package.hook)
         recent_hook_ids.insert(0, package.metadata.get("hook_id", ""))
         guarded = guard_script(package.full_script, evidence_items)

@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write  # pushes review files to the 'previews' branch
+  models: read     # the free idea engine
 
 jobs:
   preview:
@@ -57,6 +58,8 @@ jobs:
           ./scripts/install_kokoro.sh
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || true
       - name: Render a dry-run day
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python -m app.cli init-db
           time python -m app.cli daily-run

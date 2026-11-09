@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # Manual runs: render and publish this many of today's next reels immediately,
     # ignoring their scheduled slots (0 = only publish what is due).
     publish_now_count: int = 0
+    # Free idea engine (GitHub Models through the Actions token, `models: read`).
+    github_token: str = ""
+    idea_engine: bool = True
+    idea_models: str = "openai/gpt-4.1,openai/gpt-4.1-mini,openai/gpt-4o-mini"
     batch_render_size: int = 20
     dry_run: bool = True
     log_level: str = "INFO"

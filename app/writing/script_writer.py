@@ -227,6 +227,7 @@ def build_script(
     recent_hooks: set[str] | None = None,
     hook_performance: dict[str, float] | None = None,
     recent_hook_ids: list[str] | None = None,
+    draft: object | None = None,
 ) -> ScriptPackage:
     cta = next(CTA_CYCLE)
     try:
@@ -266,6 +267,12 @@ def build_script(
         if sourced:
             hook, beats = sourced
 
+    idea_source = ""
+    if not beats and draft is not None and getattr(draft, "category", "") == topic.category:
+        # Fresh idea from the daily idea engine (already rule-checked).
+        hook, beats = str(draft.hook), list(draft.beats)
+        hook_id = f"gen:{hook[:40]}"
+        idea_source = str(getattr(draft, "model", ""))
     if not beats:
         category = topic.category if topic.category != "openings_job_alert" else "application_strategy"
         pack = pick_pack(category, day_ordinal, topic.slot_index, recent_hooks)
@@ -302,5 +309,10 @@ def build_script(
         full_script=full_script,
         caption=caption,
         evidence=evidence,
-        metadata={"word_count": len(full_script.split()), "scenes": scenes, "hook_id": hook_id or f"pack:{hook[:40]}"},
+        metadata={
+            "word_count": len(full_script.split()),
+            "scenes": scenes,
+            "hook_id": hook_id or f"pack:{hook[:40]}",
+            **({"idea_source": idea_source} if idea_source else {}),
+        },
     )

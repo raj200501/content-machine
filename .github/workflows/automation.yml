@@ -11,13 +11,18 @@ on:
       publish_now:
         description: "Reels to render and post right now (0 = only what is due)"
         default: "1"
+      force:
+        description: "Run even if nothing looks due (the clock passes false)"
+        default: "true"
 
 concurrency:
   group: content-machine-automation
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write  # weekly REPORT.md commit
+  issues: write    # opens an issue (an email to you) if posting breaks
+  models: read     # free GitHub Models for the daily idea engine
 
 jobs:
   automation:
@@ -51,8 +56,9 @@ jobs:
         if: env.AUTOMATION_READY == 'true'
         env:
           EVENT_NAME: ${{ github.event_name }}
+          FORCE: ${{ inputs.force || 'true' }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$FORCE" != "false" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Manual run."
           else
@@ -111,8 +117,10 @@ jobs:
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || echo "Piper fallback voice unavailable; Kokoro will be used."
 
       - name: Run automation tick
+        id: tick
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_IG_USER_ID: ${{ secrets.INSTAGRAM_IG_USER_ID }}
           INSTAGRAM_APP_ID: ${{ secrets.INSTAGRAM_APP_ID }}
@@ -135,6 +143,31 @@ jobs:
         run: |
           python -m app.cli init-db
           ./scripts/run_with_public_media_tunnel.sh python -m app.cli automation-tick
+
+      - name: Health check (opens an issue if posting breaks, closes it when fixed)
+        if: always() && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TICK_OUTCOME: ${{ steps.tick.outcome }}
+        run: python3 scripts/health_issue.py output/last_tick.json || true
+
+      - name: Weekly report (Mondays)
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_IG_USER_ID: ${{ secrets.INSTAGRAM_IG_USER_ID }}
+          TIMEZONE: America/New_York
+          DRY_RUN: "false"
+        run: |
+          today=$(TZ=America/New_York date +%F)
+          if [ "$(TZ=America/New_York date +%u)" = "1" ] && ! grep -q "$today" REPORT.md 2>/dev/null; then
+            python -m app.cli weekly-report --out REPORT.md || exit 0
+            git config user.name "careerstacked-bot"
+            git config user.email "careerstacked-bot@users.noreply.github.com"
+            git add REPORT.md
+            git commit -qm "Weekly report $today" || exit 0
+            git pull -q --rebase origin main && git push -q origin HEAD:main || echo "Report push failed; will retry next run."
+          fi
 
       - name: Save state database
         if: always() && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true'

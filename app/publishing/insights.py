@@ -143,3 +143,27 @@ def hook_weights(db: Database, min_posts: int = 2) -> dict[str, float]:
     if average <= 0:
         return {}
     return {hook_id: max(0.5, min(1.8, score / average)) for hook_id, score in scores.items()}
+
+
+def hook_examples(db: Database, top: int = 6, bottom: int = 4) -> tuple[list[dict], list[dict]]:
+    """Best and worst hooks by the same score as hook_weights, for the idea engine to learn from."""
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.hook AS hook, i.reach AS reach, i.shares AS shares, i.saved AS saved,
+                   i.likes AS likes, i.skip_rate AS skip_rate
+            FROM post_insights i JOIN scripts s ON s.id = i.script_id
+            WHERE i.reach > 0
+            ORDER BY i.fetched_at DESC LIMIT 200
+            """
+        ).fetchall()
+    scored = []
+    for hook, reach, shares, saved, likes, skip_rate in rows:
+        engagement = (3 * (shares or 0) + 2 * (saved or 0) + (likes or 0)) / reach
+        held = 1 - (skip_rate if skip_rate is not None else 90) / 100
+        scored.append({"hook": hook, "score": engagement + held, "reach": reach})
+    if len(scored) < 4:
+        return [], []
+    scored.sort(key=lambda row: row["score"], reverse=True)
+    return scored[:top], scored[-bottom:]

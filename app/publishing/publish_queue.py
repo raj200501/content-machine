@@ -106,5 +106,6 @@ def publish_due_jobs(
             status = "failed" if current_attempts >= 5 else "ready"
             db.update_publish_job(job["id"], status=status, last_error=str(exc), attempts=current_attempts)
             stats["failed"] += 1
+            stats.setdefault("errors", []).append(str(exc)[:300])
 
     return stats

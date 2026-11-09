@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from datetime import datetime
 from pathlib import Path
 
@@ -272,6 +274,28 @@ def automation_tick() -> None:
 
     stats = run_automation_tick(db, settings)
     console.print(stats)
+    # Read by scripts/health_issue.py to open or close the "posting is broken" issue.
+    status_path = settings.output_dir / "last_tick.json"
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(stats, default=str), encoding="utf-8")
+
+
+@app.command("weekly-report")
+def weekly_report(out: Path = typer.Option(Path("REPORT.md"), help="Where to write the report")) -> None:
+    db, settings = _ctx()
+    db.init_db()
+    from app.workflows.weekly_report import build_weekly_report
+
+    followers = None
+    if settings.instagram_access_token:
+        try:
+            from app.publishing.instagram_meta import InstagramMetaPublisher
+
+            followers = InstagramMetaPublisher(settings).followers_count()
+        except Exception as exc:  # the report must never fail the run
+            console.print(f"followers unavailable: {str(exc)[:120]}")
+    out.write_text(build_weekly_report(db, settings, followers), encoding="utf-8")
+    console.print(f"wrote {out}")
 
 
 @app.command("metrics")

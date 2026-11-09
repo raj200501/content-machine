@@ -1,0 +1,45 @@
+name: clock
+
+# GitHub's cron skips most scheduled runs, so this job keeps time instead: it
+# stays awake for about 5.5 hours, starts the posting workflow at each posting
+# slot, then starts a fresh copy of itself. Free and unlimited on a PUBLIC repo.
+# On a private repo it exits right away (it would use up the free minutes).
+on:
+  workflow_dispatch:
+  schedule:
+    # Backup: restarts the clock if a hand-over ever fails. Extra copies just
+    # wait in line (one runs at a time).
+    - cron: "41 */6 * * *"
+
+concurrency:
+  group: clock
+  cancel-in-progress: false
+
+permissions:
+  actions: write  # start the posting workflow and the next clock
+  contents: read
+
+jobs:
+  keep-time:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TIMEZONE: America/New_York
+      # Posting slots (8:00 to 22:00, 5 a day) plus a catch-up try an hour after each.
+      CLOCK_SLOTS: "08:02,09:02,11:32,12:32,15:02,16:02,18:32,19:32,22:02,23:02"
+    steps:
+      - name: Public repo?
+        id: visibility
+        run: |
+          private=$(gh api "repos/$GITHUB_REPOSITORY" -q .private)
+          echo "private=$private" >> "$GITHUB_OUTPUT"
+          if [ "$private" = "true" ]; then echo "Private repo: the clock would cost Actions minutes, so it stays off."; fi
+      - uses: actions/checkout@v4
+        if: steps.visibility.outputs.private == 'false'
+      - name: Keep time
+        if: steps.visibility.outputs.private == 'false'
+        run: python3 scripts/clock.py --hours 5.5
+      - name: Hand over to the next clock
+        if: ${{ !cancelled() && steps.visibility.outputs.private == 'false' }}
+        run: gh workflow run clock.yml --ref main

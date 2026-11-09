@@ -33,6 +33,7 @@ for row in rows:
         row["full_script"],
         "```",
         "",
+        f"idea: {meta.get('idea_source') or 'hand-written pack / job data'} · hook_id: {meta.get('hook_id', '')}",
         "Scenes: " + json.dumps(meta.get("scenes", []))[:1500],
         "",
     ]
