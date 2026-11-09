@@ -81,27 +81,29 @@ def _keyboard(pressed: str | None) -> Image.Image:
     board = Image.new("RGB", (W, H - KEYBOARD_TOP), KEYBOARD_BG)
     draw = ImageDraw.Draw(board)
     # suggestion strip
-    draw.line([(360, 30), (360, 90)], fill=(170, 172, 180), width=2)
-    draw.line([(720, 30), (720, 90)], fill=(170, 172, 180), width=2)
+    draw.line([(360, 22), (360, 74)], fill=(170, 172, 180), width=2)
+    draw.line([(720, 22), (720, 74)], fill=(170, 172, 180), width=2)
     key_face = font(46, 500)
-    key_w, key_h, gap = 92, 128, 14
-    top = 130
+    key_w, key_h, gap = 92, 108, 14
+    top = 100
     for row_index, row in enumerate(ROWS):
         total = len(row) * key_w + (len(row) - 1) * gap
         x = (W - total) // 2
-        y = top + row_index * (key_h + 26)
+        y = top + row_index * (key_h + 22)
         for letter in row:
             down = pressed == letter
             draw.rounded_rectangle([x, y, x + key_w, y + key_h], radius=14, fill=KEY_DOWN if down else KEY)
-            draw.text((x + key_w / 2 - key_face.getlength(letter) / 2, y + 34), letter, font=key_face, fill=INK)
+            draw.text((x + key_w / 2 - key_face.getlength(letter) / 2, y + 26), letter, font=key_face, fill=INK)
             x += key_w + gap
-    y = top + 3 * (key_h + 26)
+    y = top + 3 * (key_h + 22)
     draw.rounded_rectangle([20, y, 230, y + key_h], radius=14, fill=(171, 176, 188))
-    draw.text((70, y + 38), "123", font=font(40, 500), fill=INK)
+    draw.text((70, y + 30), "123", font=font(40, 500), fill=INK)
     draw.rounded_rectangle([250, y, 830, y + key_h], radius=14, fill=KEY_DOWN if pressed == " " else KEY)
-    draw.text((470, y + 38), "space", font=font(40, 500), fill=INK)
+    draw.text((470, y + 30), "space", font=font(40, 500), fill=INK)
     draw.rounded_rectangle([850, y, 1060, y + key_h], radius=14, fill=(171, 176, 188))
-    draw.text((892, y + 38), "return", font=font(40, 500), fill=INK)
+    draw.text((892, y + 30), "return", font=font(40, 500), fill=INK)
+    # home indicator
+    draw.rounded_rectangle([W // 2 - 140, board.size[1] - 22, W // 2 + 140, board.size[1] - 12], radius=5, fill=INK)
     return board
 
 

@@ -35,6 +35,23 @@ for row in rows:
         "",
         "Scenes: " + json.dumps(meta.get("scenes", []))[:1500],
         "",
+    ]
+    render_meta = (row["render_meta"] or "").rsplit(" dur=", 1)[0]
+    try:
+        work_dir = Path(json.loads(render_meta).get("work_dir", "")) if render_meta else None
+    except json.JSONDecodeError:
+        work_dir = None
+    if work_dir and (work_dir / "pages").exists():
+        lines += ["Captures:"]
+        for capture in sorted((work_dir / "pages").glob("page_*.json")):
+            info = json.loads(capture.read_text())
+            if info.get("skipped"):
+                lines += [f"- {info.get('url')} · SKIPPED ({info['skipped']})"]
+                continue
+            found = "found" if info.get("pay") else "NOT FOUND"
+            lines += [f"- {info.get('url')} · height={info.get('height')} · pay={found}"]
+        lines += [""]
+    lines += [
         "Caption:",
         "```",
         f"{row['caption']}\n\n{row['hashtags']}",

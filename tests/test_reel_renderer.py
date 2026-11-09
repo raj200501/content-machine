@@ -87,3 +87,10 @@ def test_captured_postings_open_on_the_pay(tmp_path: Path, monkeypatch) -> None:
     # The highlight is already on at the very first frame (yellow tint somewhere).
     pixels = frame.convert("RGB").getdata()
     assert any(r > 240 and 200 < g < 235 and b < 100 for r, g, b in pixels)
+
+
+def test_pay_boxes_merge_per_line() -> None:
+    from app.media.page_capture import merge_line_rects
+
+    boxes = [(60, 574, 166, 42), (226, 574, 35, 42), (262, 574, 262, 42), (20, 620, 120, 42)]
+    assert merge_line_rects(boxes) == [(60, 574, 464, 42), (20, 620, 120, 42)]
