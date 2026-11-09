@@ -57,6 +57,10 @@ jobs:
         run: |
           ./scripts/install_kokoro.sh
           ./scripts/install_piper_voice.sh "$PIPER_VOICE" || true
+      - name: Idea engine check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m app.cli idea-check || true
       - name: Render a dry-run day
         env:
           GITHUB_TOKEN: ${{ github.token }}

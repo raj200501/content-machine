@@ -172,7 +172,9 @@ def _call(model: str, prompt: str, settings: Settings) -> str:
         },
         timeout=60,
     )
-    response.raise_for_status()
+    kind = response.headers.get("content-type", "")
+    if response.status_code >= 400 or "json" not in kind:
+        raise RuntimeError(f"HTTP {response.status_code} {kind} {response.text[:240]!r}")
     return response.json()["choices"][0]["message"]["content"]
 
 

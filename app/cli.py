@@ -298,6 +298,20 @@ def weekly_report(out: Path = typer.Option(Path("REPORT.md"), help="Where to wri
     console.print(f"wrote {out}")
 
 
+@app.command("idea-check")
+def idea_check() -> None:
+    """Ask the idea engine for one reel per tip category and print what passes the rules."""
+    _db, settings = _ctx()
+    from app.writing.idea_engine import CATEGORY_BRIEFS, draft_tip_packs
+
+    drafts = draft_tip_packs(list(CATEGORY_BRIEFS), settings)
+    for category, draft in drafts.items():
+        console.print(f"[bold]{category}[/bold] ({draft.model}): {draft.hook}")
+        for beat in draft.beats:
+            console.print(f"  - {beat}")
+    console.print(f"{len(drafts)} drafts passed")
+
+
 @app.command("metrics")
 def metrics() -> None:
     db, settings = _ctx()

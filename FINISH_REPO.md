@@ -12,6 +12,28 @@ you can create those. It takes about 15 minutes and costs nothing.
 Stay on free plans the whole way: no Meta ads, no Hugging Face credits, no
 paid runners.
 
+## How it runs itself
+
+Everything below happens in GitHub Actions at no cost, with nobody watching:
+
+| When | What happens |
+|---|---|
+| Every posting slot (8:00, 11:30, 15:00, 18:30, 22:00 New York) | `clock.yml` starts `automation.yml`, which posts the reel that is due (at most one per run, 100+ minutes apart). |
+| First run of the day | Pulls fresh postings (with pay) from 19 job boards and hiring news, collects yesterday's Instagram stats, then plans the day. |
+| Planning | Job reels use the real postings. Tip reels come from the **idea engine**: a free GitHub Models call that writes new ideas, told which hooks got the most saves, shares and watch time on this account and which flopped, plus today's headlines. Drafts that break the rules (stats, money, repeats, wrong length) are thrown out and a hand-written pack is used instead. |
+| Every post | Hook choice and the posting mix lean toward what has performed best (`app/publishing/insights.py`). |
+| Mondays | `REPORT.md` is updated with followers, top posts and what the system is learning. |
+| If posting breaks | An issue titled "Instagram posting is failing" is opened (GitHub emails you) with what to do. It closes itself after the next successful post. |
+
+The clock only runs on a **public** repo (Actions minutes are free and
+unlimited there). On a private repo GitHub's own scheduler is the only
+trigger, and it skips most runs. The repo contains no secrets: the token
+lives in GitHub Secrets, which stay private either way.
+
+The one thing that can need you: if Meta ever invalidates the token
+(password change, security check), the issue above tells you how to paste a
+new one.
+
 ## What you need to do
 
 ### 1. Make the Instagram account Professional (phone, 2 min)
