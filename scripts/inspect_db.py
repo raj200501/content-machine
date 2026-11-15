@@ -18,10 +18,10 @@ for row in conn.execute(
     (day,),
 ):
     print(dict(row))
-    for job in conn.execute("SELECT id, status, error_message, created_at FROM render_jobs WHERE script_id = ?", (row["id"],)):
+    for job in conn.execute("SELECT id, status, substr(error, 1, 600) AS error, created_at FROM render_jobs WHERE script_id = ?", (row["id"],)):
         print("   render", dict(job))
     for job in conn.execute("SELECT id, status, scheduled_at, last_error, attempts FROM publish_jobs WHERE script_id = ?", (row["id"],)):
         print("   publish", dict(job))
 print("last publishes:")
 for row in conn.execute("SELECT * FROM published_posts ORDER BY id DESC LIMIT 6"):
-    print("  ", {k: row[k] for k in row.keys() if k in ("id", "script_id", "published_at", "instagram_media_id", "status")})
+    print("  ", {k: row[k] for k in row.keys() if k in ("id", "script_id", "published_at", "hook")})
