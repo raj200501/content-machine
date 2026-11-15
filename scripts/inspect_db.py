@@ -25,3 +25,11 @@ for row in conn.execute(
 print("last publishes:")
 for row in conn.execute("SELECT * FROM published_posts ORDER BY id DESC LIMIT 6"):
     print("  ", {k: row[k] for k in row.keys() if k in ("id", "script_id", "published_at", "hook")})
+try:
+    print("trend radar (2x+ their usual engagement):")
+    for row in conn.execute("SELECT username, ratio, topics, substr(replace(caption, char(10), ' '), 1, 110) AS caption FROM trend_posts WHERE ratio >= 2 ORDER BY ratio DESC LIMIT 15"):
+        print("  ", dict(row))
+    for row in conn.execute("SELECT topics, COUNT(*) AS n FROM trend_posts WHERE ratio >= 2 GROUP BY topics ORDER BY n DESC LIMIT 10"):
+        print("   topics", dict(row))
+except sqlite3.OperationalError as exc:
+    print("no trend data yet", exc)
