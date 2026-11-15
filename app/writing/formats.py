@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from app.insight.job_stats import JobRecord, Market
 from app.writing.libraries import CHATS, HACKS, REDLINES, ROLE_TIPS, role_family
 
-STUDIO_FORMATS = {"job_alert", "countdown", "pay_tiers", "redline", "chat", "hack"}
+STUDIO_FORMATS = {"job_alert", "countdown", "pay_tiers", "redline", "chat", "hack", "spotlight"}
 
 HASHTAGS = {
     "job": ["#swe", "#internships", "#csmajor", "#techjobs", "#newgrad"],
@@ -416,3 +416,34 @@ def hack(index: int, rng: random.Random) -> FormatScript:
         ]
     )
     return FormatScript("hack", str(index % len(HACKS)), lines, scenes, caption, HASHTAGS["search"][:4])
+
+
+def spotlight(jobs: list[JobRecord], used_companies: set[str], rng: random.Random) -> FormatScript | None:
+    """'{Company} has 3 internships open right now. Here's what each pays.' Never runs out:
+    built fresh from whichever company has the most open, paid early-career roles."""
+
+    by_company: dict[str, list[JobRecord]] = {}
+    for job in jobs:
+        if job.pay and job.usd and job.company and job.company not in used_companies:
+            by_company.setdefault(job.company, []).append(job)
+    candidates = [(company, roles) for company, roles in by_company.items() if len(roles) >= 2]
+    if not candidates:
+        return None
+    company, roles = max(candidates, key=lambda item: (len(item[1]), max(j.top_pay for j in item[1]) / (1 if item[1][0].level == "intern" else 2080)))
+    roles = sorted(roles, key=lambda j: (j.level != "intern", -j.top_pay))[:4]
+    n = len(roles)
+    kinds = {j.level for j in roles}
+    noun = "internships" if kinds == {"intern"} else ("new grad roles" if kinds == {"new_grad"} else "early-career roles")
+    hook = f"{company} has {n} {noun} open right now. Here's what each one pays."
+    lines = [hook]
+    scenes = [{"kind": "spotlight_intro", "company": company, "n": n, "noun": noun, "url": roles[0].url}]
+    for index, job in enumerate(roles, start=1):
+        city = spoken_location(job.location)
+        where = f" in {city}" if city and city != "remote" else (" remote" if city == "remote" else "")
+        role = short_role(job)
+        lines.append(f"{role[:1].upper() + role[1:]}{where}: up to {list_pay(job, spoken=True)}.")
+        scenes.append(_job_scene(job, "countdown_item", label=f"{index}/{n}", n=n, rank=0, max_pay=max(r.top_pay for r in roles), top_pay_value=job.top_pay, pay=list_pay(job)))
+    lines.append(f"Every apply link is in my bio. {rng.choice(CTA_SEND)}")
+    scenes.append({"kind": "cta", "company": company, "url": roles[0].url, "alt_url": roles[0].alt_url})
+    caption = _caption_for_jobs(roles, f"{company} is hiring: {n} open {noun} with listed pay", f"Applying to {company}? Tell me which team.")
+    return FormatScript("spotlight", company.lower().replace(" ", "_"), lines, scenes, caption, HASHTAGS["job"][:4], roles)

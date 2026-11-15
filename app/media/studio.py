@@ -591,10 +591,25 @@ def scene_countdown_intro(frame: Image.Image, shot: Shot, u: float) -> None:
         paste_scaled(frame, tile, (CX - 2 * 170 + index * 170, 1200), appear)
 
 
+def scene_spotlight_intro(frame: Image.Image, shot: Shot, u: float) -> None:
+    spec = shot.spec
+    logo = shot.assets.get("logo")
+    if logo is not None:
+        paste_scaled(frame, logo, (CX, 420), 1.1 - 0.1 * back_out(progress(u, 0, 0.35)))
+    draw = ImageDraw.Draw(frame)
+    draw_center(draw, 580, spec.get("company", ""), fit_font(spec.get("company", ""), 920, 110, 60), WHITE, stroke=2)
+    big = text_tile(str(spec.get("n", "")), font(300, 900), YELLOW, stroke=4)
+    paste_scaled(frame, big, (CX, 880), 1.12 - 0.12 * ease_out(progress(u, 0, 0.3)))
+    draw_center(draw, 1060, f"{spec.get('noun', 'roles')} open now", font(64, 900), WHITE)
+    chip = text_tile("with the pay for each", font(44, 800), INK, pad=(28, 14), bg=YELLOW)
+    paste_scaled(frame, chip, (CX, 1190), back_out(progress(u, 0.3, 0.3)))
+
+
 def scene_countdown_item(frame: Image.Image, shot: Shot, u: float) -> None:
     spec = shot.spec
-    rank = int(spec.get("rank", 1))
-    rank_tile = text_tile(f"#{rank}", font(250, 900), YELLOW if rank == 1 else ACCENT, stroke=4)
+    rank = int(spec.get("rank", 1) or 0)
+    label = spec.get("label") or f"#{rank}"
+    rank_tile = text_tile(label, font(250 if not spec.get("label") else 170, 900), YELLOW if rank == 1 else ACCENT, stroke=4)
     paste_scaled(frame, rank_tile, (300, 380), 1.15 - 0.15 * ease_out(progress(u, 0, 0.25)))
     logo = shot.assets.get("logo")
     if logo is not None:
@@ -611,10 +626,11 @@ def scene_countdown_item(frame: Image.Image, shot: Shot, u: float) -> None:
     draw = ImageDraw.Draw(frame)
     draw.rounded_rectangle([MARGIN, 1060, MARGIN + (W - 2 * MARGIN - 40) * fill * grow, 1110], radius=25, fill=YELLOW if rank == 1 else ACCENT)
     n = int(spec.get("n", 5))
-    for index in range(n):
-        x = CX - (n - 1) * 30 + index * 60
-        filled = (n - index) >= rank
-        draw.ellipse([x - 14, 1170, x + 14, 1198], fill=YELLOW if filled else (80, 76, 110))
+    if not spec.get("label"):
+        for index in range(n):
+            x = CX - (n - 1) * 30 + index * 60
+            filled = (n - index) >= rank
+            draw.ellipse([x - 14, 1170, x + 14, 1198], fill=YELLOW if filled else (80, 76, 110))
 
 
 TIER_COLORS = {"S": (255, 127, 127), "A": (255, 191, 127), "B": (255, 223, 127), "C": (191, 255, 127)}
@@ -876,6 +892,7 @@ DRAWERS = {
     "tip": scene_tip,
     "cta": scene_cta,
     "countdown_intro": scene_countdown_intro,
+    "spotlight_intro": scene_spotlight_intro,
     "countdown_item": scene_countdown_item,
     "tier_board": scene_tier_board,
     "redline": scene_redline,
@@ -950,7 +967,7 @@ def prepare_assets(shots: list[Shot], settings: Settings, work_dir: Path) -> Non
                 shot.assets.update(assets)
             elif shot.kind in {"alert_hook", "cta"}:
                 shot.assets["backdrop"] = assets["backdrop"]
-        if shot.kind in {"alert_hook", "countdown_item"} and spec.get("company"):
+        if shot.kind in {"alert_hook", "countdown_item", "spotlight_intro"} and spec.get("company"):
             size = 210 if shot.kind == "alert_hook" else 230
             shot.assets["logo"] = company_logo(spec["company"], url, size, cache)
         if shot.kind == "countdown_intro":
@@ -976,7 +993,7 @@ def sound_events(shots: list[Shot]) -> list[tuple[float, str]]:
         start = shot.line.start
         if shot.index > 0:
             events.append((start, "whoosh"))
-        if shot.kind in {"alert_hook", "countdown_item", "market_bar"}:
+        if shot.kind in {"alert_hook", "countdown_item", "market_bar", "spotlight_intro"}:
             events.append((start + (0.65 if shot.kind == "market_bar" else 0.05), "pop"))
         if shot.kind == "proof":
             events.append((start + 1.15, "pop"))

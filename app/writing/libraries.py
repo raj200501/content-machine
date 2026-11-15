@@ -81,6 +81,54 @@ REDLINES = [
         "strong": "Organized 6 coding workshops attended by 250 students.",
         "why": "Member is passive. Show what you started or ran.",
     },
+    {
+        "hook": "Your summary line is wasting prime space.",
+        "weak": "Motivated computer science student seeking opportunities.",
+        "strong": "CS junior who ships backend tools; 2 internships, 1 app with 5,000 users.",
+        "why": "The top line gets read most. Put proof there, not hopes.",
+    },
+    {
+        "hook": "Make your research bullet readable to recruiters.",
+        "weak": "Conducted research on graph neural networks under a professor.",
+        "strong": "Built a GNN that cut fraud false positives 18% on 2M bank transactions.",
+        "why": "Recruiters aren't researchers. Say the result in plain numbers.",
+    },
+    {
+        "hook": "Your side project deserves a better bullet.",
+        "weak": "Made a Discord bot for fun.",
+        "strong": "Built a Discord bot in Node.js now running in 40 servers with 9,000 members.",
+        "why": "For fun hides it. Real users make a side project count.",
+    },
+    {
+        "hook": "This is the bullet hiring managers stop on.",
+        "weak": "Improved the database.",
+        "strong": "Added two Postgres indexes that cut the slowest query from 9 seconds to 300 ms.",
+        "why": "Exactly what you changed and exactly what it did.",
+    },
+    {
+        "hook": "Your freelance work is undersold.",
+        "weak": "Freelance web developer.",
+        "strong": "Built and launched 5 sites for local businesses; one doubled online orders.",
+        "why": "Clients and outcomes turn freelance into real experience.",
+    },
+    {
+        "hook": "Rewrite your open source bullet like this.",
+        "weak": "Contributed to open source projects.",
+        "strong": "Merged 6 pull requests into a 10K-star Python library, including a caching fix.",
+        "why": "Name the project size and your best merged change.",
+    },
+    {
+        "hook": "Your non-tech job can still help you.",
+        "weak": "Cashier at a grocery store.",
+        "strong": "Trained 6 new cashiers and handled $3K in daily sales without errors.",
+        "why": "Every job shows reliability. Show it with one number.",
+    },
+    {
+        "hook": "Fix the bullet everyone writes for their capstone.",
+        "weak": "Worked on senior design project with a team.",
+        "strong": "Led backend for a 5-person capstone: REST API with auth serving 120 test users.",
+        "why": "Your role, your piece, and how many people used it.",
+    },
 ]
 
 # Interview dialogues: question, the answer people give, the answer that works.
@@ -155,6 +203,62 @@ CHATS = [
         "good": "I built a study room bot my school now runs, 1,200 bookings a month.",
         "why": "Pick something others use. Usage beats GPA.",
     },
+    {
+        "hook": "When they ask 'why should we hire you', say this.",
+        "question": "Why should we hire you over other candidates?",
+        "bad": "I'm a really hard worker and a fast learner.",
+        "good": "You need someone who can ship backend features. I've shipped 3 at my last internship, and I ramp fast on new stacks.",
+        "why": "Match their need to your proof. Skip the adjectives.",
+    },
+    {
+        "hook": "How to answer 'tell me about a failure'.",
+        "question": "Tell me about a time you failed.",
+        "bad": "I can't really think of one.",
+        "good": "I shipped a feature without load testing and it slowed checkout. I rolled it back, added a load test, and now I test first.",
+        "why": "Own it, fix it, show what changed. That's what they want.",
+    },
+    {
+        "hook": "The recruiter asked your graduation date. Answer like this.",
+        "question": "When do you graduate, and when could you start?",
+        "bad": "Uh, sometime next year I think.",
+        "good": "May 2027, and I can start full time in June.",
+        "why": "Exact dates. Vague answers make you look less ready.",
+    },
+    {
+        "hook": "Asked if you need visa sponsorship? Say this clearly.",
+        "question": "Will you now or in the future require sponsorship?",
+        "bad": "Um, maybe? It depends, I'm not totally sure.",
+        "good": "Yes. I'm on F-1 with OPT, then I'd need H-1B sponsorship.",
+        "why": "Be clear and calm. Hedging here only causes problems later.",
+    },
+    {
+        "hook": "When the interviewer asks about your project, do this.",
+        "question": "Walk me through a project you're proud of.",
+        "bad": "So I used React, and Node, and MongoDB, and Tailwind, and...",
+        "good": "Students kept missing deadlines, so I built a tracker. The hard part was syncing calendars. 300 people use it now.",
+        "why": "Problem, hardest part, result. The stack can come later.",
+    },
+    {
+        "hook": "What to say when you finish coding early.",
+        "question": "Okay, you're done. Anything else?",
+        "bad": "Nope, I think it works.",
+        "good": "Let me test an empty input and a duplicate case. Then the runtime is O(n) time and O(n) space.",
+        "why": "Testing your own code unprompted is what strong candidates do.",
+    },
+    {
+        "hook": "Answer 'where do you see yourself in five years' like this.",
+        "question": "Where do you see yourself in five years?",
+        "bad": "Honestly, probably running my own startup.",
+        "good": "Leading projects on a team like this one, and mentoring newer engineers.",
+        "why": "Show growth that includes them, not an exit plan.",
+    },
+    {
+        "hook": "When the recruiter says the role is filled, reply this.",
+        "question": "Sorry, we've filled that role.",
+        "bad": "Oh okay, thanks anyway.",
+        "good": "Thanks for letting me know. Are there similar roles opening soon that I could be considered for?",
+        "why": "One polite question keeps you in their pipeline.",
+    },
 ]
 
 # Job-search tricks that are true and checkable. "url" pairs show the edit.
@@ -206,6 +310,30 @@ HACKS = [
         "after": 'site:jobs.ashbyhq.com "software engineer" intern after:2026-10-01',
         "explain": "The after operator only returns pages Google found after that date.",
         "why": "Ashby is what a lot of AI startups use. This surfaces their newest roles.",
+    },
+    {
+        "hook": "Find internships that mention visa sponsorship with one search.",
+        "site": "google.com",
+        "before": "software engineer intern 2027",
+        "after": 'site:job-boards.greenhouse.io intern 2027 "visa sponsorship"',
+        "explain": "Quoting the phrase only returns postings that mention sponsorship.",
+        "why": "International students can see which postings talk about it first.",
+    },
+    {
+        "hook": "Search LinkedIn for remote internships only.",
+        "site": "linkedin.com/jobs/search",
+        "before": "linkedin.com/jobs/search?keywords=software%20intern",
+        "after": "linkedin.com/jobs/search?keywords=software%20intern&f_WT=2",
+        "explain": "That filter keeps only remote roles.",
+        "why": "Remote internships get flooded fast. Filter, then apply early.",
+    },
+    {
+        "hook": "Get LinkedIn jobs from the last 24 hours only.",
+        "site": "linkedin.com/jobs/search",
+        "before": "linkedin.com/jobs/search?keywords=new%20grad%20software",
+        "after": "linkedin.com/jobs/search?keywords=new%20grad%20software&f_TPR=r86400",
+        "explain": "That bit at the end shows only jobs from the past day.",
+        "why": "Check it once a day and you're always an early applicant.",
     },
 ]
 

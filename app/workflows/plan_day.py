@@ -62,6 +62,13 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         planner = DayPlanner(
             open_postings(source_items, recent_scripts, target_date), recent_hook_ids, target_date, source_items, hook_performance
         )
+        try:
+            from app.publishing.insights import format_weights
+            from app.publishing.trends import trend_format_weights
+
+            planner.set_format_weights(format_weights(db), trend_format_weights(db))
+        except Exception:  # learning signals are optional
+            pass
     # Generated vs hand-written: start even, then follow which earns more.
     share = generated_share(db)
     chooser = random.Random(target_date.toordinal())

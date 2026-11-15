@@ -32,6 +32,12 @@ def publish_summary(stats: dict) -> tuple[int, int, list[str]]:
             published += int(value.get("published") or 0)
             failed += int(value.get("failed") or 0) - int(value.get("missing_media") or 0)
             errors += [str(e) for e in value.get("errors") or []]
+        if key.startswith("render") and isinstance(value, dict):
+            # Renders that crashed (not reels the quality check rejected) count as failures.
+            crashed = len(value.get("render_errors") or []) - int(value.get("rejected") or 0)
+            if crashed > 0:
+                failed += crashed
+                errors += [str(e) for e in value.get("render_errors") or []]
     return published, max(failed, 0), errors
 
 

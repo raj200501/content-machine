@@ -65,6 +65,15 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
             results["insights"] = {"error": str(exc)[:200]}
         db.set_metric(metric_date, "insights_collected", float(results["insights"].get("updated", 0)))
 
+    if settings.publish_ready and not settings.dry_run and "trends_collected" not in metrics and _time_reached(current, time(7, 30)):
+        try:
+            from app.publishing.trends import collect_trends
+
+            results["trends"] = collect_trends(db, settings)
+        except Exception as exc:  # the radar must never block posting
+            results["trends"] = {"error": str(exc)[:200]}
+        db.set_metric(metric_date, "trends_collected", float(results["trends"].get("posts", 0) if isinstance(results["trends"], dict) else 0))
+
     render_due_only = settings.publish_ready and not settings.dry_run
     publish_now = settings.publish_now_count if render_due_only else 0
     if publish_now > 0:

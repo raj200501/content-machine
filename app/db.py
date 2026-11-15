@@ -596,6 +596,18 @@ class Database:
                 ),
             )
 
+    def count_failed_renders(self, script_id: int) -> int:
+        with self.connect() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM render_jobs WHERE script_id = ? AND status = 'failed'", (script_id,)).fetchone()
+        return int(row[0] or 0)
+
+    def skip_publish_jobs_for_script(self, script_id: int, reason: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE publish_jobs SET status = 'skipped', last_error = ?, updated_at = ? WHERE script_id = ? AND status IN ('planned', 'ready')",
+                (reason, iso_now(), script_id),
+            )
+
     def fail_render_job(self, render_job_id: int, error: str, metadata: dict[str, Any] | None = None) -> None:
         with self.connect() as conn:
             conn.execute(

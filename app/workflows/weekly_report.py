@@ -53,5 +53,23 @@ def build_weekly_report(db: Database, settings: Settings, followers: int | None)
         lines += ["", "Hooks the idea engine is told to learn from:"] + [f"- {row['hook']}" for row in winners[:5]]
     if losers:
         lines += ["", "Hooks it is told to avoid:"] + [f"- {row['hook']}" for row in losers[:3]]
+    try:
+        from app.publishing.insights import format_weights
+        from app.publishing.trends import top_outperformers, trend_format_weights
+
+        own = format_weights(db)
+        if own:
+            lines += ["", "Format weights from this account's results: " + ", ".join(f"{k} x{v:.2f}" for k, v in sorted(own.items(), key=lambda kv: -kv[1]))]
+        trend = trend_format_weights(db)
+        if trend:
+            lines += ["", "Format weights from what's working for other accounts: " + ", ".join(f"{k} x{v:.2f}" for k, v in sorted(trend.items(), key=lambda kv: -kv[1]))]
+        winners = top_outperformers(db, limit=6)
+        if winners:
+            lines += ["", "## Working for other accounts in the niche (2x+ their usual engagement)", ""]
+            for row in winners:
+                first = (row["caption"] or "").split("\n")[0][:90]
+                lines.append(f"- @{row['username']}: \"{first}\" ({row['ratio']:.1f}x, topics: {row['topics'] or 'other'})")
+    except Exception:
+        pass
     lines += ["", "<!-- " + json.dumps({"generated_at": now.isoformat()}) + " -->", ""]
     return "\n".join(lines)

@@ -297,6 +297,19 @@ def jobs_page(out: Path = typer.Option(Path("site/index.html"), help="Where to w
     console.print(f"wrote {out}")
 
 
+@app.command("trends")
+def trends() -> None:
+    """Run the trend radar now and print what's outperforming in the niche."""
+    db, settings = _ctx()
+    db.init_db()
+    from app.publishing.trends import collect_trends, top_outperformers, trend_format_weights
+
+    console.print(collect_trends(db, settings))
+    console.print(trend_format_weights(db))
+    for row in top_outperformers(db, limit=10):
+        console.print(f"@{row['username']} {row['ratio']:.1f}x [{row['topics']}] {(row['caption'] or '')[:100]!r}")
+
+
 @app.command("weekly-report")
 def weekly_report(out: Path = typer.Option(Path("REPORT.md"), help="Where to write the report")) -> None:
     db, settings = _ctx()

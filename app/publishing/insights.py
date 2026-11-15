@@ -196,3 +196,27 @@ def generated_share(db: Database, min_posts: int = 3) -> float:
     if "gen:" not in scores or "pack" not in scores or scores["pack"] <= 0:
         return 0.5
     return max(0.25, min(0.85, 0.5 * scores["gen:"] / scores["pack"]))
+
+
+def format_weights(db: Database, min_posts: int = 3) -> dict[str, float]:
+    """Format -> weight (0.6-1.6) from this account's own results per reel format."""
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT json_extract(s.metadata_json, '$.format') AS format, COUNT(*) AS posts,
+                   SUM(i.reach), SUM(i.shares), SUM(i.saved), SUM(i.likes), AVG(i.skip_rate), AVG(i.views)
+            FROM post_insights i JOIN scripts s ON s.id = i.script_id
+            WHERE json_extract(s.metadata_json, '$.format') IS NOT NULL
+            GROUP BY format
+            """
+        ).fetchall()
+    scores = {}
+    for fmt, posts, reach, shares, saved, likes, skip_rate, views in rows:
+        if (posts or 0) >= min_posts and reach:
+            engagement = (3 * (shares or 0) + 2 * (saved or 0) + (likes or 0)) / reach
+            scores[fmt] = engagement + 1 - (skip_rate if skip_rate is not None else 90) / 100 + min((views or 0) / 2000, 0.5)
+    if len(scores) < 2:
+        return {}
+    mean = sum(scores.values()) / len(scores)
+    return {fmt: max(0.6, min(1.6, score / mean)) for fmt, score in scores.items()}

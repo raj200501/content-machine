@@ -186,18 +186,31 @@ def open_postings(source_items: list[dict], recent_scripts: list[dict], run_date
         for item in (json_loads(script.get("evidence_json"), default=[]) or [])
         if item.get("source_url")
     }
+    # The same role posted again under another URL (another city, a re-post) counts as a repeat.
+    recent_roles = {
+        _role_key(str(item.get("company") or ""), str(item.get("title") or ""))
+        for script in recent_scripts
+        if str(script.get("created_at", ""))[:10] >= (run_date - timedelta(days=14)).isoformat()
+        for item in (json_loads(script.get("evidence_json"), default=[]) or [])
+        if item.get("company") and item.get("title")
+    }
     # Job postings must still be listed on the board (seen in the last 3 days).
     still_listed_since = (run_date - timedelta(days=3)).isoformat()
-    return [
-        item for item in source_items
-        if not (
-            item["source_type"] == "job_board"
-            and (
-                str(item.get("source_url") or "") in recent_urls
-                or (bool(item.get("fetched_at")) and str(item["fetched_at"])[:10] < still_listed_since)
-            )
-        )
-    ]
+    kept = []
+    for item in source_items:
+        if item["source_type"] == "job_board":
+            meta = json_loads(item.get("metadata_json"), default={}) or {}
+            role = _role_key(str(meta.get("company") or ""), str(meta.get("job_title") or item.get("title") or ""))
+            if str(item.get("source_url") or "") in recent_urls or role in recent_roles:
+                continue
+            if item.get("fetched_at") and str(item["fetched_at"])[:10] < still_listed_since:
+                continue
+        kept.append(item)
+    return kept
+
+
+def _role_key(company: str, title: str) -> tuple[str, str]:
+    return company.strip().lower(), re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
 
 
 def _build_topics(run_date, schedule_slots, source_items, grouped_jobs, company_counts, hook_counts, recent_topics, category_multipliers):

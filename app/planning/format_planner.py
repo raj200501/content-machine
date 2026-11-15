@@ -66,6 +66,7 @@ class DayPlanner:
         performance: dict[str, float] | None = None,
     ):
         self.performance = performance or {}
+        self.format_weight: dict[str, float] = {}
         self.jobs: list[JobRecord] = [job for job in records(open_items) if job.level in {"intern", "new_grad"}]
         # Market numbers come from every posting we have seen in 30 days, not just unused ones.
         self.market: Market = market([job for job in records(all_items or open_items) if job.level in {"intern", "new_grad"}])
@@ -74,13 +75,26 @@ class DayPlanner:
         self.run_date = run_date
         self.rng = random.Random(run_date.toordinal())
         self.job_slot = 0
+        self.formats_today: list[str] = []
+        self.companies_today: set[str] = set()
+
+    def set_format_weights(self, own: dict[str, float], trends: dict[str, float]) -> None:
+        """Own results count double; what's trending for other accounts tilts the rest."""
+
+        for fmt in set(own) | set(trends):
+            self.format_weight[fmt] = own.get(fmt, 1.0) ** 2 * trends.get(fmt, 1.0)
+
+    def _ranked(self, candidates: list[str]) -> list[str]:
+        return sorted(candidates, key=lambda fmt: -self.format_weight.get(fmt, 1.0) * (1 + self.rng.random() * 0.2))
 
     def _available(self) -> list[JobRecord]:
         return [job for job in self.jobs if job.url not in self.used_urls]
 
     def _claim(self, script: FormatScript) -> FormatScript:
         self.used_urls.update(job.url for job in script.jobs)
+        self.companies_today.update(job.company for job in script.jobs[:1])
         self.recent_hook_ids.insert(0, script.hook_id)
+        self.formats_today.append(script.format)
         return script
 
     def job_format(self) -> FormatScript | None:
@@ -92,9 +106,14 @@ class DayPlanner:
                 tiers = formats.pay_tiers(available, self.rng)
                 if tiers:
                     return self._claim(tiers)
-            counted = formats.countdown(available, self.market, self.rng)
-            if counted:
-                return self._claim(counted)
+            for candidate in self._ranked(["countdown", "spotlight"]):
+                built = (
+                    formats.countdown(available, self.market, self.rng)
+                    if candidate == "countdown"
+                    else formats.spotlight(available, self.companies_today, self.rng)
+                )
+                if built:
+                    return self._claim(built)
         if paid:
             # Freshest high-paying role first: score pay rank and freshness together.
             def score(job: JobRecord) -> float:
@@ -114,13 +133,23 @@ class DayPlanner:
             fmt = "chat"
         if not fmt:
             return None
-        index, fresh = pick_item(fmt, self.recent_hook_ids, self.rng, self.performance)
-        if not fresh:
-            for alternative in ("chat", "redline", "hack"):
-                alt_index, alt_fresh = pick_item(alternative, self.recent_hook_ids, self.rng, self.performance)
-                if alt_fresh:
-                    fmt, index = alternative, alt_index
-                    break
+        # One of each tip format per day at most, and never a library item that ran recently.
+        options = [fmt] + self._ranked([alt for alt in ("redline", "chat", "hack") if alt != fmt])
+        for candidate in options:
+            if candidate in self.formats_today:
+                continue
+            index, fresh = pick_item(candidate, self.recent_hook_ids, self.rng, self.performance)
+            if fresh:
+                builder = {"redline": formats.redline, "chat": formats.chat, "hack": formats.hack}[candidate]
+                return self._claim(builder(index, self.rng))
+        # Libraries used up for now: make a data reel instead (these never run out).
+        spot = formats.spotlight(self._available(), self.companies_today, self.rng)
+        if spot:
+            return self._claim(spot)
+        tiers = formats.pay_tiers(self._available(), self.rng) if "pay_tiers" not in self.formats_today else None
+        if tiers:
+            return self._claim(tiers)
+        index, _fresh = pick_item(fmt, self.recent_hook_ids, self.rng, self.performance)
         builder = {"redline": formats.redline, "chat": formats.chat, "hack": formats.hack}[fmt]
         return self._claim(builder(index, self.rng))
 

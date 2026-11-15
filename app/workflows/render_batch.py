@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 
 from app.config import Settings
 from app.db import Database
 from app.media.quality_check import validate_render
 from app.media.video_provider import render_with_fallback
+
+
+LOG = logging.getLogger(__name__)
+
+# Quality-check failures that a retry can't fix.
+QUALITY_FLAGS = ("too similar", "outside the", "caption is too long", "unsupported", "carousel needs")
 
 
 def run_render_batch(
@@ -19,15 +27,19 @@ def run_render_batch(
     scheduled_before: str | None = None,
 ) -> dict[str, int]:
     target_date = run_date or datetime.now(settings.tzinfo).date()
+    wanted = count or settings.batch_render_size
+    # Look a few scripts ahead so one bad script can never block the rest of the day.
     scripts = db.list_renderable_scripts(
         day=target_date.isoformat(),
-        limit=count or settings.batch_render_size,
+        limit=wanted + 4,
         scheduled_before=scheduled_before,
     )
-    stats = {"renders_succeeded": 0, "provider_failures": 0, "fallback_renders_used": 0}
+    stats: dict = {"renders_succeeded": 0, "provider_failures": 0, "fallback_renders_used": 0, "render_errors": [], "rejected": 0}
     recent_scripts = db.recent_scripts(30)
 
     for script_row in scripts:
+        if stats["renders_succeeded"] >= wanted:
+            break
         render_job_id = db.create_render_job(script_row["id"], "pending")
         try:
             output_root = settings.rendered_dir / target_date.isoformat()
@@ -63,8 +75,18 @@ def run_render_batch(
                 stats["provider_failures"] += 1
             stats["renders_succeeded"] += 1
         except Exception as exc:
-            db.fail_render_job(render_job_id, str(exc))
-            db.update_script_status(script_row["id"], "render_failed")
+            message = str(exc)
+            LOG.warning("Render failed for script %s: %s", script_row["id"], message[:300])
+            db.fail_render_job(render_job_id, message)
+            stats["render_errors"].append(f"script {script_row['id']}: {message[:200]}")
+            permanent = any(flag in message for flag in QUALITY_FLAGS)
+            if permanent or db.count_failed_renders(script_row["id"]) >= 2:
+                # Retrying won't fix it: drop this reel and move on to the next one.
+                db.update_script_status(script_row["id"], "rejected")
+                db.skip_publish_jobs_for_script(script_row["id"], message[:300])
+                stats["rejected"] += 1
+            else:
+                db.update_script_status(script_row["id"], "render_failed")
 
     db.set_metric(target_date.isoformat(), "renders_succeeded", stats["renders_succeeded"])
     db.set_metric(target_date.isoformat(), "provider_failures", stats["provider_failures"])

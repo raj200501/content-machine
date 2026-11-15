@@ -93,3 +93,33 @@ def test_studio_renders_a_short_reel(tmp_path: Path) -> None:
     row = {"id": 1, "full_script": "\n".join(script.lines[:3]), "metadata_json": json.dumps({"format": "chat", "scenes": script.scenes[:3]})}
     artifact = render_studio(settings, row, tmp_path / "out")
     assert artifact.video_path.exists() and artifact.duration_seconds > 2
+
+
+def test_trend_topics_and_weights(tmp_path: Path) -> None:
+    from app.db import Database
+    from app.publishing.trends import _ensure_table, topics_of, trend_format_weights
+
+    assert "pay" in topics_of("Stripe pays interns $58/hr") and "job_list" in topics_of("Stripe is hiring interns")
+    assert topics_of("Never say this in a behavioral interview") == ["interview"]
+    db = Database(tmp_path / "db.sqlite")
+    db.init_db()
+    _ensure_table(db)
+    with db.connect() as conn:
+        for i in range(6):
+            conn.execute(
+                "INSERT INTO trend_posts VALUES (?, 'x', 'c', 1, 1, 100, 3.0, ?, 'REELS', NULL, 'now')",
+                (f"p{i}", "resume" if i < 4 else "interview"),
+            )
+    weights = trend_format_weights(db)
+    assert weights["redline"] > weights["chat"] >= 0.75
+
+
+def test_spotlight_and_daily_variety() -> None:
+    from app.models import PlannedTopic
+
+    items = ITEMS + [_item(40, "Stripe", "Software Engineer Intern", "$50–$56/hr"), _item(41, "Stripe", "Data Science Intern", "$45–$52/hr")]
+    planner = DayPlanner(items, [f"fmt:{f}:{i}" for i in range(20) for f in ("redline", "chat", "hack")], date(2026, 11, 10))
+    topics = [PlannedTopic("2026-11-10", i, "x", c, "", "", "", "", [], 0) for i, c in enumerate(["resume_portfolio", "interview_prep"])]
+    built = [planner.build(t) for t in topics]
+    assert built[0].format == "spotlight" and built[0].lines[0].startswith("Stripe has 3")
+    assert built[1].format != "spotlight" or built[1].jobs[0].company != "Stripe"
