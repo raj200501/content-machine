@@ -50,6 +50,7 @@ class FormatScript:
     caption: str
     hashtags: list[str]
     jobs: list[JobRecord] = field(default_factory=list)
+    variant_settings: dict = field(default_factory=dict)
 
     @property
     def hook(self) -> str:
@@ -328,8 +329,9 @@ def _tier_row(row) -> dict:
     return {"tier": name, "members": [{"company": m.company, "pay": list_pay(m), "url": m.url} for m in members]}
 
 
-def redline(index: int, rng: random.Random) -> FormatScript:
-    item = REDLINES[index % len(REDLINES)]
+def redline(index: int, rng: random.Random, item: dict | None = None, key: str | None = None) -> FormatScript:
+    item = item or REDLINES[index % len(REDLINES)]
+    key = key if key is not None else str(index % len(REDLINES))
     lines = [
         item["hook"],
         f"Most people write: {item['weak']}",
@@ -357,11 +359,12 @@ def redline(index: int, rng: random.Random) -> FormatScript:
             "What bullet should I fix next?",
         ]
     )
-    return FormatScript("redline", str(index % len(REDLINES)), lines, scenes, caption, HASHTAGS["resume"][:4])
+    return FormatScript("redline", key, lines, scenes, caption, HASHTAGS["resume"][:4])
 
 
-def chat(index: int, rng: random.Random) -> FormatScript:
-    item = CHATS[index % len(CHATS)]
+def chat(index: int, rng: random.Random, item: dict | None = None, key: str | None = None) -> FormatScript:
+    item = item or CHATS[index % len(CHATS)]
+    key = key if key is not None else str(index % len(CHATS))
     bad_line = "Most people freeze." if item["bad"].strip(". ") == "" else f"Most people say: {item['bad']}"
     lines = [
         item["hook"],
@@ -386,7 +389,7 @@ def chat(index: int, rng: random.Random) -> FormatScript:
             "Which interview question should I do next?",
         ]
     )
-    return FormatScript("chat", str(index % len(CHATS)), lines, scenes, caption, HASHTAGS["interview"][:4])
+    return FormatScript("chat", key, lines, scenes, caption, HASHTAGS["interview"][:4])
 
 
 def hack(index: int, rng: random.Random) -> FormatScript:

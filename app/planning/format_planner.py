@@ -29,30 +29,37 @@ TIP_FORMAT = {
 LIBRARY_SIZE = {"redline": len(REDLINES), "chat": len(CHATS), "hack": len(HACKS)}
 
 
-def _recent_uses(recent_hook_ids: list[str], fmt: str) -> dict[int, int]:
-    """item index -> how many scripts ago it was last used (0 = most recent)."""
+def _recent_uses(recent_hook_ids: list[str], fmt: str) -> dict[str, int]:
+    """item key -> how many scripts ago it was last used (0 = most recent)."""
 
-    uses: dict[int, int] = {}
+    uses: dict[str, int] = {}
     for age, hook_id in enumerate(recent_hook_ids):
         parts = (hook_id or "").split(":")
-        if len(parts) == 3 and parts[0] == "fmt" and parts[1] == fmt and parts[2].isdigit():
-            uses.setdefault(int(parts[2]), age)
+        if len(parts) == 3 and parts[0] == "fmt" and parts[1] == fmt:
+            uses.setdefault(parts[2], age)
     return uses
 
 
-def pick_item(fmt: str, recent_hook_ids: list[str], rng: random.Random, performance: dict[str, float] | None = None) -> tuple[int, bool]:
-    """(index, fresh) for a library format. fresh=False means everything ran recently.
+def pick_item(
+    fmt: str,
+    recent_hook_ids: list[str],
+    rng: random.Random,
+    performance: dict[str, float] | None = None,
+    keys: list[str] | None = None,
+) -> tuple[str, bool]:
+    """(key, fresh) for a library format. fresh=False means everything ran recently.
 
+    Keys are "0".."n-1" for hand-written items and "g<id>" for generated ones.
     Among items not used recently, ones that earned more saves/shares/watch time
     on earlier runs are more likely to come back."""
 
-    size = LIBRARY_SIZE[fmt]
+    keys = keys if keys is not None else [str(i) for i in range(LIBRARY_SIZE[fmt])]
     uses = _recent_uses(recent_hook_ids, fmt)
-    unused = [index for index in range(size) if index not in uses]
+    unused = [key for key in keys if key not in uses]
     if unused:
-        weights = [(performance or {}).get(f"fmt:{fmt}:{index}", 1.0) for index in unused]
+        weights = [(performance or {}).get(f"fmt:{fmt}:{key}", 1.0) for key in unused]
         return rng.choices(unused, weights=weights, k=1)[0], True
-    oldest = max(uses.items(), key=lambda item: item[1])[0]
+    oldest = max((key for key in keys if key in uses), key=lambda key: uses[key])
     return oldest, uses[oldest] > 60  # 60 scripts ago is about 12 days at 5/day
 
 
@@ -67,6 +74,10 @@ class DayPlanner:
     ):
         self.performance = performance or {}
         self.format_weight: dict[str, float] = {}
+        self.extra: dict[str, dict[str, dict]] = {"redline": {}, "chat": {}}
+        self.db = None  # set by plan_day so experiments can read results
+        self.variant: dict = {}
+
         self.jobs: list[JobRecord] = [job for job in records(open_items) if job.level in {"intern", "new_grad"}]
         # Market numbers come from every posting we have seen in 30 days, not just unused ones.
         self.market: Market = market([job for job in records(all_items or open_items) if job.level in {"intern", "new_grad"}])
@@ -77,6 +88,20 @@ class DayPlanner:
         self.job_slot = 0
         self.formats_today: list[str] = []
         self.companies_today: set[str] = set()
+
+    def add_generated(self, kind: str, items: list[tuple[str, dict]]) -> None:
+        self.extra.setdefault(kind, {}).update(dict(items))
+
+    def _keys(self, fmt: str) -> list[str]:
+        return [str(i) for i in range(LIBRARY_SIZE[fmt])] + list(self.extra.get(fmt, {}))
+
+    def _build_library(self, fmt: str, key: str) -> FormatScript:
+        if fmt == "hack":
+            return formats.hack(int(key), self.rng)
+        builder = formats.redline if fmt == "redline" else formats.chat
+        if key.startswith("g"):
+            return builder(0, self.rng, item=self.extra[fmt][key], key=key)
+        return builder(int(key), self.rng)
 
     def set_format_weights(self, own: dict[str, float], trends: dict[str, float]) -> None:
         """Own results count double; what's trending for other accounts tilts the rest."""
@@ -138,10 +163,9 @@ class DayPlanner:
         for candidate in options:
             if candidate in self.formats_today:
                 continue
-            index, fresh = pick_item(candidate, self.recent_hook_ids, self.rng, self.performance)
+            key, fresh = pick_item(candidate, self.recent_hook_ids, self.rng, self.performance, self._keys(candidate))
             if fresh:
-                builder = {"redline": formats.redline, "chat": formats.chat, "hack": formats.hack}[candidate]
-                return self._claim(builder(index, self.rng))
+                return self._claim(self._build_library(candidate, key))
         # Libraries used up for now: make a data reel instead (these never run out).
         spot = formats.spotlight(self._available(), self.companies_today, self.rng)
         if spot:
@@ -149,14 +173,22 @@ class DayPlanner:
         tiers = formats.pay_tiers(self._available(), self.rng) if "pay_tiers" not in self.formats_today else None
         if tiers:
             return self._claim(tiers)
-        index, _fresh = pick_item(fmt, self.recent_hook_ids, self.rng, self.performance)
-        builder = {"redline": formats.redline, "chat": formats.chat, "hack": formats.hack}[fmt]
-        return self._claim(builder(index, self.rng))
+        key, _fresh = pick_item(fmt, self.recent_hook_ids, self.rng, self.performance, self._keys(fmt))
+        return self._claim(self._build_library(fmt, key))
 
     def build(self, topic: PlannedTopic) -> FormatScript | None:
-        if topic.category == "openings_job_alert":
-            return self.job_format()
-        return self.tip_format(topic.category)
+        from app.planning.experiments import choose_variant
+
+        self.variant = choose_variant(self.db, self.rng)
+        script = self.job_format() if topic.category == "openings_job_alert" else self.tip_format(topic.category)
+        if script is not None:
+            if script.format == "job_alert" and not self.variant.get("job_tip", True):
+                # Variant without the tip line (shorter reel).
+                keep = [i for i, scene in enumerate(script.scenes) if scene.get("kind") != "tip"]
+                script.lines = [script.lines[i] for i in keep]
+                script.scenes = [script.scenes[i] for i in keep]
+            script.variant_settings = dict(self.variant)
+        return script
 
 
 def to_package(topic: PlannedTopic, script: FormatScript, evidence_items: list[dict]) -> ScriptPackage:
@@ -188,5 +220,6 @@ def to_package(topic: PlannedTopic, script: FormatScript, evidence_items: list[d
             "hook_id": script.hook_id,
             "word_count": len(" ".join(script.lines).split()),
             "source_item_ids": [job.item_id for job in script.jobs],
+            "variant": getattr(script, "variant_settings", {}),
         },
     )

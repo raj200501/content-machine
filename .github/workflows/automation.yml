@@ -43,12 +43,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore state database
+        id: state
         if: env.AUTOMATION_READY == 'true' && env.USE_TURSO != 'true'
         uses: actions/cache/restore@v4
         with:
           path: output/content_machine.db
           key: content-machine-state-${{ github.run_id }}
           restore-keys: content-machine-state-
+
+      - name: Fall back to the daily state backup
+        # If the cache was ever evicted, restore from the 'state' branch so the bot
+        # keeps its memory (what it posted, what worked) instead of starting over.
+        if: env.AUTOMATION_READY == 'true' && env.USE_TURSO != 'true' && steps.state.outputs.cache-matched-key == ''
+        run: |
+          mkdir -p output
+          if git fetch -q --depth 1 origin state 2>/dev/null; then
+            git show FETCH_HEAD:content_machine.db > output/content_machine.db && echo "Restored state from backup branch."
+          else
+            echo "No backup yet; starting fresh."
+          fi
 
       - name: Anything to do?
         id: window
@@ -133,6 +146,11 @@ jobs:
         id: tick
         if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'
         env:
+          # Optional: a free Gemini API key (secret LLM_API_KEY) lets the bot write new
+          # tips every week. Without it, the hand-written libraries and data formats are used.
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'gemini-flash-latest' }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_IG_USER_ID: ${{ secrets.INSTAGRAM_IG_USER_ID }}
           INSTAGRAM_APP_ID: ${{ secrets.INSTAGRAM_APP_ID }}
@@ -204,6 +222,21 @@ jobs:
         with:
           path: output/content_machine.db
           key: content-machine-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Back up state daily (state branch)
+        if: env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true' && env.USE_TURSO != 'true' && steps.window.outputs.plan == 'true'
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -f output/content_machine.db ] || exit 0
+          mkdir -p /tmp/state && cp output/content_machine.db /tmp/state/content_machine.db
+          cd /tmp/state
+          git init -q -b state
+          git config user.name "careerstacked-bot"
+          git config user.email "careerstacked-bot@users.noreply.github.com"
+          git add -A && git commit -qm "State backup $(date -u +%F)"
+          git push -fq "https://x-access-token:${TOKEN}@github.com/${REPO}.git" state || echo "State backup push failed"
 
       - name: Upload rendered reels
         if: always() && env.AUTOMATION_READY == 'true' && steps.window.outputs.run == 'true'

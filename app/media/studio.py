@@ -42,6 +42,7 @@ GREEN = (34, 197, 94)
 INK = (20, 18, 32)
 CAPTION_Y = 1370
 TRANSITION = 0.16
+CAPTION_SIZE = [78]  # set per reel by the style experiment
 
 
 # ------------------------------------------------------------------ text --
@@ -341,14 +342,15 @@ def draw_captions(frame: Image.Image, shot: Shot, t: float) -> None:
         current = chunks[0]
     if t > shot.line.speech_end + 0.25:
         return
-    face = font(78, 900)
+    base = CAPTION_SIZE[0]
+    face = font(base, 900)
     texts = [words[i].text for i in current]
     space = face.getlength(" ")
     widths = [face.getlength(text) for text in texts]
     total = sum(widths) + space * (len(texts) - 1)
     scale = min(1.0, 900 / max(total, 1))
     if scale < 1:
-        face = font(int(78 * scale), 900)
+        face = font(int(base * scale), 900)
         widths = [face.getlength(text) for text in texts]
         space = face.getlength(" ")
         total = sum(widths) + space * (len(texts) - 1)
@@ -1026,6 +1028,15 @@ def render_studio(settings: Settings, script_row: dict, output_root: Path) -> Re
     final_path = output_root / f"{slug}.mp4"
     lines = [line.strip() for line in script_text.splitlines() if line.strip()]
     seed = int(hash_text(script_text)[:8], 16) % 1000
+    variant = meta.get("variant") or {}
+    updates = {}
+    if variant.get("voice_speed"):
+        updates["kokoro_speed"] = float(variant["voice_speed"])
+    if variant.get("music_db") is not None:
+        updates["music_bed_volume_db"] = float(variant["music_db"])
+    if updates:
+        settings = settings.model_copy(update=updates)
+    CAPTION_SIZE[0] = int(variant.get("caption_size") or 78)
     voice = synthesize_timed_lines(lines, work_dir, "voiceover", settings)
     specs = list(meta.get("scenes") or [])
     shots = []
@@ -1075,6 +1086,7 @@ def render_studio(settings: Settings, script_row: dict, output_root: Path) -> Re
             "thumb_offset_ms": 300,
             "scenes": [shot.kind for shot in shots],
             "style": f"studio:{meta.get('format', '')}",
+            "variant": variant,
         },
         fallback_used=False,
     )

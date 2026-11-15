@@ -76,7 +76,7 @@ def test_planner_never_repeats_a_role_in_a_day_and_rotates_libraries() -> None:
     package = to_package(topics[0], scripts[0], [])
     assert package.metadata["format"] == "job_alert" and package.full_script.count("\n") == len(scripts[0].lines) - 1
     index, fresh = pick_item("hack", ["fmt:hack:0", "fmt:hack:1"], random.Random(0))
-    assert index not in {0, 1} and fresh
+    assert index not in {"0", "1"} and fresh
 
 
 def test_jobs_page_lists_roles_with_pay() -> None:
@@ -123,3 +123,49 @@ def test_spotlight_and_daily_variety() -> None:
     built = [planner.build(t) for t in topics]
     assert built[0].format == "spotlight" and built[0].lines[0].startswith("Stripe has 3")
     assert built[1].format != "spotlight" or built[1].jobs[0].company != "Stripe"
+
+
+def test_library_growth_checks_and_uses_generated_items(tmp_path: Path, monkeypatch) -> None:
+    import app.writing.library_growth as growth
+    from app.db import Database
+    from app.models import PlannedTopic
+
+    good = {"hook": "Your projects section is hiding your best work.", "weak": "Built various projects.",
+            "strong": "Built a budget app in Swift with 1,200 downloads and a 4.8 rating.", "why": "Downloads and ratings are proof anyone can check."}
+    bad = {"hook": "Google wants this on your resume.", "weak": "Did stuff.", "strong": "Improved things a lot.", "why": "Because it is better."}
+    calls = []
+
+    def fake_chat(settings, messages, max_tokens=3000):
+        calls.append(messages[-1]["content"][:20])
+        if "Grade each item" in messages[-1]["content"]:
+            return "[9]"
+        return json.dumps([good, bad])
+
+    monkeypatch.setattr(growth, "_chat", fake_chat)
+    db = Database(tmp_path / "db.sqlite")
+    db.init_db()
+    settings = Settings(llm_api_key="k", llm_base_url="https://llm.test/v1")
+    stats = growth.grow_libraries(db, settings)
+    assert stats["kept"] >= 1 and any("banned" in r or "no number" in r for r in stats["rejected"])
+    assert growth.grow_libraries(db, settings)["skipped"] == "grew recently"
+    items = growth.generated_items(db, "redline")
+    assert items and items[0][0].startswith("g")
+    planner = DayPlanner(ITEMS, [f"fmt:redline:{i}" for i in range(20)], date(2026, 11, 10))
+    planner.add_generated("redline", items)
+    script = planner.build(PlannedTopic("2026-11-10", 0, "x", "resume_portfolio", "", "", "", "", [], 0))
+    assert script.format == "redline" and script.hook_id == f"fmt:redline:{items[0][0]}"
+    assert growth.grow_libraries(db, Settings(llm_api_key="", llm_base_url=""))["skipped"].startswith("no LLM")
+
+
+def test_style_experiments_pick_known_values_and_land_in_metadata() -> None:
+    from app.models import PlannedTopic
+    from app.planning.experiments import DIMENSIONS, choose_variant
+
+    variant = choose_variant(None, random.Random(1))
+    assert set(variant) == set(DIMENSIONS) and all(variant[k] in DIMENSIONS[k] for k in DIMENSIONS)
+    planner = DayPlanner(ITEMS, [], date(2026, 11, 10))
+    topic = PlannedTopic("2026-11-10", 0, "x", "openings_job_alert", "", "", "", "", [], 0)
+    script = planner.build(topic)
+    package = to_package(topic, script, [])
+    assert package.metadata["variant"] == script.variant_settings
+    assert len(script.lines) == len(script.scenes)

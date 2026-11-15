@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     llm_dir: Path = Path("assets/llm")
     llm_base_url: str = ""
     llm_api_key: str = ""
-    llm_model: str = "local"
+    llm_model: str = "gemini-flash-latest"
     batch_render_size: int = 20
     dry_run: bool = True
     log_level: str = "INFO"

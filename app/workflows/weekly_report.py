@@ -63,6 +63,11 @@ def build_weekly_report(db: Database, settings: Settings, followers: int | None)
         trend = trend_format_weights(db)
         if trend:
             lines += ["", "Format weights from what's working for other accounts: " + ", ".join(f"{k} x{v:.2f}" for k, v in sorted(trend.items(), key=lambda kv: -kv[1]))]
+        from app.planning.experiments import summary
+
+        tests = summary(db)
+        if tests:
+            lines += ["", "## Style A/B tests (higher score wins more often)", ""] + [f"- {line}" for line in tests]
         winners = top_outperformers(db, limit=6)
         if winners:
             lines += ["", "## Working for other accounts in the niche (2x+ their usual engagement)", ""]

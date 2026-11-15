@@ -73,6 +73,12 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
         except Exception as exc:  # the radar must never block posting
             results["trends"] = {"error": str(exc)[:200]}
         db.set_metric(metric_date, "trends_collected", float(results["trends"].get("posts", 0) if isinstance(results["trends"], dict) else 0))
+        try:
+            from app.writing.library_growth import grow_libraries
+
+            results["library_growth"] = grow_libraries(db, settings)
+        except Exception as exc:  # optional; never blocks posting
+            results["library_growth"] = {"error": str(exc)[:200]}
 
     render_due_only = settings.publish_ready and not settings.dry_run
     publish_now = settings.publish_now_count if render_due_only else 0

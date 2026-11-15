@@ -62,12 +62,20 @@ def run_plan_day(db: Database, settings: Settings, run_date: date | None = None)
         planner = DayPlanner(
             open_postings(source_items, recent_scripts, target_date), recent_hook_ids, target_date, source_items, hook_performance
         )
+        planner.db = db
         try:
             from app.publishing.insights import format_weights
             from app.publishing.trends import trend_format_weights
 
             planner.set_format_weights(format_weights(db), trend_format_weights(db))
         except Exception:  # learning signals are optional
+            pass
+        try:
+            from app.writing.library_growth import generated_items
+
+            for kind in ("redline", "chat"):
+                planner.add_generated(kind, generated_items(db, kind))
+        except Exception:
             pass
     # Generated vs hand-written: start even, then follow which earns more.
     share = generated_share(db)
