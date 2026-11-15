@@ -1,0 +1,27 @@
+name: inspect
+
+# Prints the saved pipeline state (today's scripts, renders, publish jobs) for debugging.
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "YYYY-MM-DD (default today, New York time)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore state database
+        uses: actions/cache/restore@v4
+        with:
+          path: output/content_machine.db
+          key: content-machine-state-inspect-${{ github.run_id }}
+          restore-keys: |
+            content-machine-state-
+      - run: python3 scripts/inspect_db.py output/content_machine.db ${{ inputs.day }}
