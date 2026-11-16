@@ -86,7 +86,7 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
     return None
 
 
-VERTEX_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.5-flash-lite"]
+VERTEX_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.5-flash-lite"]
 
 
 def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -> str:
@@ -101,28 +101,31 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
     body = {"contents": contents, "generationConfig": {"temperature": 0.8, "maxOutputTokens": max_tokens}}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    preferred = [settings.llm_model] if settings.llm_model and "latest" not in settings.llm_model else []
+    preferred = [settings.llm_model] if settings.llm_model else []
     last_error = ""
-    for model in preferred + VERTEX_MODELS:
-        response = requests.post(
-            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent",
-            params={"key": settings.llm_api_key},
-            json=body,
-            timeout=120,
-        )
-        if response.status_code == 404:
-            last_error = f"{model} not found"
-            continue
-        if response.status_code >= 400:
-            raise RuntimeError(f"Vertex HTTP {response.status_code}: {response.text[:200]}")
-        parts = response.json()["candidates"][0]["content"]["parts"]
-        return "".join(part.get("text", "") for part in parts)
-    raise RuntimeError(f"No Vertex model available ({last_error})")
+    # Same request shape works on both Google endpoints: AI Studio (Gemini API) first,
+    # then Vertex AI express mode.
+    hosts = [
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent",
+    ]
+    for host in hosts:
+        for model in preferred + [m for m in VERTEX_MODELS if m not in preferred]:
+            response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=120)
+            if response.status_code == 404:
+                last_error = f"{model} not found"
+                continue
+            if response.status_code >= 400:
+                last_error = f"HTTP {response.status_code}: {response.text[:300]}"
+                break  # key not valid for this host: try the next host
+            parts = response.json()["candidates"][0]["content"]["parts"]
+            return "".join(part.get("text", "") for part in parts)
+    raise RuntimeError(f"Google model call failed ({last_error})")
 
 
 def _chat(settings: Settings, messages: list[dict], max_tokens: int = 3000) -> str:
     key = settings.llm_api_key
-    if key.startswith("AQ.") or "aiplatform.googleapis.com" in settings.llm_base_url:
+    if key.startswith(("AQ.", "AIza")) or "googleapis.com" in settings.llm_base_url:
         return _vertex_express(settings, messages, max_tokens)
     response = requests.post(
         f"{settings.llm_base_url.rstrip('/')}/chat/completions",
