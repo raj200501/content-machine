@@ -343,6 +343,10 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
             stats["rejected"].append(f"{kind}: grading failed {str(exc)[:120]}")
             continue
         stats.setdefault("grades", {})[kind] = [grade for grade, _fix in graded]
+        stats.setdefault("notes", []).extend(
+            f"{kind} {grade:.0f}: {item['hook']} | {item.get('good') or item.get('strong')} | fix: {fix}"
+            for item, (grade, fix) in zip(candidates, graded)
+        )
         kept = [(item, grade) for item, (grade, _fix) in zip(candidates, graded) if grade >= 8]
         # One rewrite pass for the near misses, using the editor's own notes.
         near = [(item, fix) for item, (grade, fix) in zip(candidates, graded) if 6 <= grade < 8 and fix]

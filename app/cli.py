@@ -332,6 +332,8 @@ def grow_preview() -> None:
         for reason in stats.get("rejected", [])[:20]:
             print(f"  rejected: {reason}")
         print(f"grades: {stats.get('grades')}")
+        for note in stats.get("notes", []):
+            print(f"  note: {note[:400]}")
         for kind in ("redline", "chat"):
             for key, item in generated_items(scratch, kind):
                 print(f"({kind} {key}) " + json.dumps(item)[:600])
