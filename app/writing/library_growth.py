@@ -30,10 +30,14 @@ from app.writing.libraries import CHATS, REDLINES
 LOG = logging.getLogger(__name__)
 
 BANNED = re.compile(
-    r"%(?! )|\$\d|percent|studies show|research shows|statistic|guarantee|you will get (hired|the job)|#|https?://|"
+    r"studies show|research shows|statistic|guarantee|you will get (hired|the job)|#|https?://|"
+    r"\b\d+\s*(%|percent) of (recruiters|students|companies|people|applicants|hiring managers|candidates|resumes)\b|"
     r"\b(google|meta|amazon|apple|microsoft|netflix|openai|nvidia|stripe|facebook|tesla)\b",
     re.I,
 )
+# Money and percentages read as claims everywhere except inside an example resume
+# bullet ("cut load time 40%", "saved $2K a month"), where they are the point.
+CLAIMS = re.compile(r"%|\$\d|percent", re.I)
 
 SYSTEM = """You write short, specific career tips for @careerstacked, an Instagram account for CS
 students hunting internships and new grad jobs. Viewers hate vague advice. Every item must be
@@ -68,17 +72,19 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
     """Why an item is rejected, or None if it passes the rule checks."""
 
     limits = {
-        "redline": {"hook": (4, 12), "weak": (3, 14), "strong": (8, 22), "why": (5, 16)},
-        "chat": {"hook": (4, 12), "question": (3, 16), "bad": (1, 18), "good": (8, 35), "why": (5, 16)},
+        "redline": {"hook": (4, 13), "weak": (2, 16), "strong": (8, 24), "why": (4, 18)},
+        "chat": {"hook": (4, 13), "question": (3, 18), "bad": (1, 20), "good": (8, 38), "why": (4, 18)},
     }[kind]
     for key, (low, high) in limits.items():
         value = str(item.get(key) or "").strip()
         if not value:
             return f"missing {key}"
         if not low <= _words(value) <= high:
-            return f"{key} length"
+            return f"{key} length ({_words(value)} words)"
         if BANNED.search(value):
             return f"banned content in {key}"
+        if CLAIMS.search(value) and not (kind == "redline" and key in ("weak", "strong")):
+            return f"money or percent claim in {key}"
     if kind == "redline" and not re.search(r"\d", item["strong"]):
         return "rewrite has no number"
     for hook in existing_hooks:
@@ -165,6 +171,15 @@ def llm_check(settings: Settings) -> str:
     return f"{reply.strip()[:40]} (model: {LAST_MODEL[0] or settings.llm_model})"
 
 
+def _as_number(value) -> float:
+    if isinstance(value, dict):
+        value = next((v for v in value.values() if isinstance(v, (int, float, str))), 0)
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return 0.0
+
+
 def _json_block(text: str):
     match = re.search(r"[\[{].*[\]}]", text or "", re.S)
     if not match:
@@ -246,7 +261,7 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
             reason = check(kind, item, existing + [c["hook"] for c in candidates])
             stats["generated"] += 1
             if reason:
-                stats["rejected"].append(f"{kind}: {reason}")
+                stats["rejected"].append(f"{kind}: {reason} | {json.dumps(item)[:220]}")
                 continue
             candidates.append(item)
         if not candidates:
@@ -261,7 +276,8 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
                         {
                             "role": "user",
                             "content": "Grade each item 1-10 for: specific, correct, useful today, sounds like a real person, "
-                            "and the hook matches the content. Reply with a JSON array of numbers only, same order.\n"
+                            "and the hook matches the content. Numbers in resume bullets are example figures, which is fine. "
+                            "Reply with a JSON array of integers only, same order, like [8, 6, 9].\n"
                             + json.dumps(candidates, indent=1),
                         },
                     ],
@@ -270,10 +286,13 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
             )
         except Exception:
             grades = None
+        if isinstance(grades, list):
+            grades = [_as_number(grade) for grade in grades]
         if not isinstance(grades, list) or len(grades) != len(candidates):
             stats["rejected"].append(f"{kind}: grading failed, kept nothing")
             continue
-        kept = [(item, float(grade)) for item, grade in zip(candidates, grades) if isinstance(grade, (int, float)) and grade >= 8]
+        stats.setdefault("grades", {})[kind] = grades
+        kept = [(item, grade) for item, grade in zip(candidates, grades) if grade >= 8]
         kept = sorted(kept, key=lambda pair: -pair[1])[:per_kind]
         now = datetime.now(timezone.utc).isoformat()
         with db.connect() as conn:
