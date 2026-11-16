@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -82,6 +83,12 @@ WEAK_EXAMPLE = {
         "good": "I sometimes take on too much, but I'm learning to prioritize and delegate tasks better.",
         "why": "Show self-awareness.",
     },
+}
+
+
+FIELDS = {
+    "redline": ("hook", "weak", "strong", "why"),
+    "chat": ("hook", "question", "bad", "good", "why"),
 }
 
 
@@ -318,71 +325,36 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
         trending = [row["caption"].split("\n")[0][:140] for row in top_outperformers(db, limit=12, days=30)]
     except Exception:
         trending = []
-    for kind, examples in (("redline", REDLINES), ("chat", CHATS)):
-        existing = [item["hook"] for item in examples] + [item["hook"] for _key, item in generated_items(db, kind)]
-        prompt = "\n".join(
-            [
-                f"Write {per_kind + 4} NEW items. {FORMAT_HELP[kind]}",
-                "",
-                "Examples of the quality bar (do not reuse):",
-                json.dumps(examples[:3], indent=1),
-                "",
-                "Posts that are getting unusual engagement in this niche right now (for topic ideas only):",
-                *[f"- {caption}" for caption in trending],
-                "",
-                "Hooks already used (do not repeat or reword):",
-                *[f"- {hook}" for hook in existing[:60]],
-                "",
-                "Reply with a JSON array of objects only.",
-            ]
-        )
+    rng = random.Random(datetime.now(timezone.utc).strftime("%Y-%W"))
+    for kind, library in (("redline", REDLINES), ("chat", CHATS)):
+        existing = [item["hook"] for item in library] + [item["hook"] for _key, item in generated_items(db, kind)]
+        examples = rng.sample(library, min(6, len(library)))
         try:
-            drafts = _json_block(_chat(settings, [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]))
+            drafts = _draft(settings, kind, examples, trending, existing, per_kind + 6)
         except Exception as exc:
             stats["rejected"].append(f"{kind}: call failed {str(exc)[:120]}")
             continue
-        candidates = []
-        for draft in drafts if isinstance(drafts, list) else []:
-            if not isinstance(draft, dict):
-                continue
-            item = {key: re.sub(r"\s+", " ", str(value)).strip() for key, value in draft.items() if isinstance(value, (str, int, float))}
-            reason = check(kind, item, existing + [c["hook"] for c in candidates])
-            stats["generated"] += 1
-            if reason:
-                stats["rejected"].append(f"{kind}: {reason} | {json.dumps(item)[:220]}")
-                continue
-            candidates.append(item)
+        candidates = _passing(kind, drafts, existing, stats)
         if not candidates:
             continue
-        # Second opinion: grade each candidate; keep only the strong ones.
         try:
-            raw_grades = _chat(
-                    settings,
-                    [
-                        {"role": "system", "content": GRADER},
-                        {
-                            "role": "user",
-                            "content": "Calibration, already graded:\n"
-                            + json.dumps([{**examples[0], "grade": 8}, {**examples[1], "grade": 8}, {**WEAK_EXAMPLE[kind], "grade": 4}], indent=1)
-                            + "\n\nNow grade these. Reply with a JSON array of integers only, one per item, same order, like [6, 8, 5].\n"
-                            + json.dumps(candidates, indent=1),
-                        },
-                    ],
-                    max_tokens=200,
-                )
-            grades = _json_block(raw_grades)
-            if isinstance(grades, dict):
-                grades = next((v for v in grades.values() if isinstance(v, list)), None)
-            stats.setdefault("grader_reply", {})[kind] = re.sub(r"\s+", " ", raw_grades)[:300]
-        except Exception:
-            grades = None
-        if isinstance(grades, list):
-            grades = [_as_number(grade) for grade in grades]
-        if not isinstance(grades, list) or len(grades) != len(candidates):
-            stats["rejected"].append(f"{kind}: grading failed, kept nothing")
+            graded = _grade(settings, kind, examples, candidates)
+        except Exception as exc:
+            stats["rejected"].append(f"{kind}: grading failed {str(exc)[:120]}")
             continue
-        stats.setdefault("grades", {})[kind] = grades
-        kept = [(item, grade) for item, grade in zip(candidates, grades) if grade >= 8]
+        stats.setdefault("grades", {})[kind] = [grade for grade, _fix in graded]
+        kept = [(item, grade) for item, (grade, _fix) in zip(candidates, graded) if grade >= 8]
+        # One rewrite pass for the near misses, using the editor's own notes.
+        near = [(item, fix) for item, (grade, fix) in zip(candidates, graded) if 6 <= grade < 8 and fix]
+        if near:
+            try:
+                revised = _passing(kind, _revise(settings, kind, near), existing + [i["hook"] for i, _g in kept], stats)
+                if revised:
+                    regraded = _grade(settings, kind, examples, revised)
+                    stats["grades"][kind + "_revised"] = [grade for grade, _fix in regraded]
+                    kept += [(item, grade) for item, (grade, _fix) in zip(revised, regraded) if grade >= 8]
+            except Exception as exc:
+                stats["rejected"].append(f"{kind}: revise failed {str(exc)[:120]}")
         kept = sorted(kept, key=lambda pair: -pair[1])[:per_kind]
         now = datetime.now(timezone.utc).isoformat()
         with db.connect() as conn:
@@ -393,3 +365,100 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
                 )
         stats["kept"] += len(kept)
     return stats
+
+
+QUALITY_NOTES = {
+    "redline": (
+        "What makes the examples good: the weak bullet is one real students actually write; the strong "
+        "bullet names a specific project, the tool, and a believable number; the hook calls out one "
+        "specific mistake in plain words. Pick sharper, less obvious angles than 'quantify your impact'."
+    ),
+    "chat": (
+        "What makes the examples good: the question is a real moment (recruiter call, technical round, "
+        "offer call, career fair); the good answer is something a student can say word for word, with "
+        "one concrete detail; the hook names the exact moment ('When they ask X, say this'). Skip "
+        "generic advice like 'be confident' or 'research the company'."
+    ),
+}
+
+
+def _draft(settings: Settings, kind: str, examples: list[dict], trending: list[str], existing: list[str], count: int) -> list:
+    prompt = "\n".join(
+        [
+            f"Write {count} NEW items. {FORMAT_HELP[kind]}",
+            "",
+            "Examples of the quality bar (do not reuse):",
+            json.dumps(examples, indent=1),
+            "",
+            QUALITY_NOTES[kind],
+            "",
+            "Posts that are getting unusual engagement in this niche right now (for topic ideas only):",
+            *[f"- {caption}" for caption in trending],
+            "",
+            "Hooks already used (do not repeat or reword):",
+            *[f"- {hook}" for hook in existing[:60]],
+            "",
+            "Plain text only: no markdown, no brackets, no placeholders. Reply with a JSON array of objects only.",
+        ]
+    )
+    drafts = _json_block(_chat(settings, [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]))
+    return drafts if isinstance(drafts, list) else []
+
+
+def _passing(kind: str, drafts: list, existing: list[str], stats: dict) -> list[dict]:
+    candidates: list[dict] = []
+    for draft in drafts:
+        if not isinstance(draft, dict):
+            continue
+        fields = FIELDS[kind]
+        item = {key: re.sub(r"\s+", " ", str(draft.get(key, ""))).strip() for key in fields}
+        reason = check(kind, item, existing + [c["hook"] for c in candidates])
+        stats["generated"] += 1
+        if reason:
+            stats["rejected"].append(f"{kind}: {reason} | {json.dumps(item)[:220]}")
+            continue
+        candidates.append(item)
+    return candidates
+
+
+def _grade(settings: Settings, kind: str, examples: list[dict], candidates: list[dict]) -> list[tuple[float, str]]:
+    raw = _chat(
+        settings,
+        [
+            {"role": "system", "content": GRADER},
+            {
+                "role": "user",
+                "content": "Calibration, already graded:\n"
+                + json.dumps([{**examples[0], "grade": 8}, {**examples[1], "grade": 8}, {**WEAK_EXAMPLE[kind], "grade": 4}], indent=1)
+                + "\n\nNow grade these. Reply with a JSON array only, one object per item, same order: "
+                '{"grade": <1-10>, "fix": "<the single change that would make it an 8 or better>"}\n'
+                + json.dumps(candidates, indent=1),
+            },
+        ],
+        max_tokens=1500,
+    )
+    parsed = _json_block(raw)
+    if isinstance(parsed, dict):
+        parsed = next((v for v in parsed.values() if isinstance(v, list)), None)
+    if not isinstance(parsed, list) or len(parsed) != len(candidates):
+        raise RuntimeError(f"unexpected grader reply: {re.sub(chr(10), ' ', str(raw))[:160]}")
+    out = []
+    for entry in parsed:
+        fix = str(entry.get("fix", "")).strip() if isinstance(entry, dict) else ""
+        out.append((_as_number(entry), fix))
+    return out
+
+
+def _revise(settings: Settings, kind: str, near: list[tuple[dict, str]]) -> list:
+    prompt = "\n".join(
+        [
+            f"Rewrite each item, applying its editor note. Keep the same fields. {FORMAT_HELP[kind]}",
+            QUALITY_NOTES[kind],
+            "",
+            json.dumps([{"item": item, "editor_note": fix} for item, fix in near], indent=1),
+            "",
+            "Plain text only. Reply with a JSON array of the rewritten items only, same order.",
+        ]
+    )
+    revised = _json_block(_chat(settings, [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]))
+    return revised if isinstance(revised, list) else []

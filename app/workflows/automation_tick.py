@@ -45,6 +45,20 @@ def _hold_reason(db: Database, settings: Settings, current: datetime) -> str | N
 
 
 def run_automation_tick(db: Database, settings: Settings, *, now: datetime | None = None) -> dict[str, dict]:
+    results = _tick(db, settings, now=now)
+    if "trends" in results:
+        # Once a day, after this tick's post went out: new tips from the free model.
+        # Slow model calls here can never delay a post.
+        try:
+            from app.writing.library_growth import grow_libraries
+
+            results["library_growth"] = grow_libraries(db, settings)
+        except Exception as exc:  # optional; never blocks posting
+            results["library_growth"] = {"error": str(exc)[:200]}
+    return results
+
+
+def _tick(db: Database, settings: Settings, *, now: datetime | None = None) -> dict[str, dict]:
     current = now or datetime.now(settings.tzinfo)
     metric_date = current.date().isoformat()
     metrics = _metric_map(db, metric_date)
@@ -73,12 +87,6 @@ def run_automation_tick(db: Database, settings: Settings, *, now: datetime | Non
         except Exception as exc:  # the radar must never block posting
             results["trends"] = {"error": str(exc)[:200]}
         db.set_metric(metric_date, "trends_collected", float(results["trends"].get("posts", 0) if isinstance(results["trends"], dict) else 0))
-        try:
-            from app.writing.library_growth import grow_libraries
-
-            results["library_growth"] = grow_libraries(db, settings)
-        except Exception as exc:  # optional; never blocks posting
-            results["library_growth"] = {"error": str(exc)[:200]}
 
     render_due_only = settings.publish_ready and not settings.dry_run
     publish_now = settings.publish_now_count if render_due_only else 0
