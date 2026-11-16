@@ -130,6 +130,22 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
 
 
 LAST_MODEL = [""]
+# Wall-clock budget for one growth run (time.monotonic() deadline). Growth runs inside
+# the posting job, so it must never run long enough to delay or time out a post.
+DEADLINE: list[float | None] = [None]
+# Models that timed out or ran out of quota during this growth run: skip them for
+# the rest of the run instead of waiting on them again.
+BENCHED: set[str] = set()
+GROWTH_BUDGET_SECONDS = 420
+
+
+def _time_left() -> float:
+    if DEADLINE[0] is None:
+        return 120.0
+    left = DEADLINE[0] - time.monotonic()
+    if left < 25:
+        raise RuntimeError("time budget used up")
+    return min(120.0, left - 5)
 # Used only if Google's model list can't be read. Google retires models over time,
 # so the list below is a fallback; normally the live list decides.
 FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
@@ -198,16 +214,21 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
     for host in hosts:
         host_name = host.split("/")[2]
         for model in models:
+            if model in BENCHED:
+                continue
             for attempt in range(2):
                 try:
-                    response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=120)
+                    response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=_time_left())
                 except requests.RequestException as exc:
                     last_error = f"{model}: {type(exc).__name__}"
                     LOG.info("Model call %s on %s failed: %s", model, host_name, type(exc).__name__)
+                    if isinstance(exc, requests.Timeout):
+                        BENCHED.add(model)
                     response = None
                     break
                 LOG.info("Model call %s on %s -> HTTP %s", model, host_name, response.status_code)
                 if response.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+                    _time_left()
                     time.sleep(8)  # overloaded or rate-limited: one patient retry
                     continue
                 break
@@ -215,6 +236,8 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
                 continue
             if response.status_code == 404 or response.status_code == 429 or response.status_code >= 500:
                 last_error = f"{model}: HTTP {response.status_code}"
+                if response.status_code in (404, 429):
+                    BENCHED.add(model)  # missing, or out of quota for now
                 continue
             if response.status_code >= 400:
                 last_error = f"{host_name} HTTP {response.status_code}: {response.text[:300]}"
@@ -240,7 +263,7 @@ def _chat(settings: Settings, messages: list[dict], max_tokens: int = 3000) -> s
         f"{settings.llm_base_url.rstrip('/')}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": settings.llm_model, "messages": messages, "temperature": 0.8, "max_tokens": max_tokens},
-        timeout=120,
+        timeout=_time_left(),
     )
     if response.status_code >= 400:
         raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
@@ -309,14 +332,26 @@ def generated_items(db: Database, kind: str) -> list[tuple[str, dict]]:
 
 
 def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_days: int = 7) -> dict:
+    DEADLINE[0] = time.monotonic() + GROWTH_BUDGET_SECONDS
+    BENCHED.clear()
+    try:
+        return _grow(db, settings, per_kind, every_days)
+    finally:
+        DEADLINE[0] = None
+        BENCHED.clear()
+
+
+def _grow(db: Database, settings: Settings, per_kind: int, every_days: int) -> dict:
     stats = {"generated": 0, "kept": 0, "rejected": []}
     if not (settings.llm_api_key and settings.llm_base_url):
         stats["skipped"] = "no LLM_API_KEY configured"
         return stats
     _ensure_table(db)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=every_days)).isoformat()
     with db.connect() as conn:
-        last = conn.execute("SELECT MAX(created_at) FROM generated_items").fetchone()[0]
-    if last and datetime.fromisoformat(last) > datetime.now(timezone.utc) - timedelta(days=every_days):
+        fresh = {row[0] for row in conn.execute("SELECT DISTINCT kind FROM generated_items WHERE created_at > ?", (cutoff,))}
+    due = [kind for kind in ("redline", "chat") if kind not in fresh]
+    if not due:
         stats["skipped"] = "grew recently"
         return stats
     try:
@@ -327,6 +362,8 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
         trending = []
     rng = random.Random(datetime.now(timezone.utc).strftime("%Y-%W"))
     for kind, library in (("redline", REDLINES), ("chat", CHATS)):
+        if kind not in due:
+            continue
         existing = [item["hook"] for item in library] + [item["hook"] for _key, item in generated_items(db, kind)]
         examples = rng.sample(library, min(6, len(library)))
         try:

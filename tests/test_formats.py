@@ -147,7 +147,9 @@ def test_library_growth_checks_and_uses_generated_items(tmp_path: Path, monkeypa
     settings = Settings(llm_api_key="k", llm_base_url="https://llm.test/v1")
     stats = growth.grow_libraries(db, settings)
     assert stats["kept"] >= 1 and any("banned" in r or "no number" in r for r in stats["rejected"])
-    assert growth.grow_libraries(db, settings)["skipped"] == "grew recently"
+    redlines_before = len(growth.generated_items(db, "redline"))
+    growth.grow_libraries(db, settings)  # chats are still due; redlines grew this week
+    assert len(growth.generated_items(db, "redline")) == redlines_before
     items = growth.generated_items(db, "redline")
     assert items and items[0][0].startswith("g")
     planner = DayPlanner(ITEMS, [f"fmt:redline:{i}" for i in range(20)], date(2026, 11, 10))
