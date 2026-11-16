@@ -114,7 +114,13 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
     ]
     for host in hosts:
         for model in preferred + [m for m in VERTEX_MODELS if m not in preferred]:
-            response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=120)
+            try:
+                response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=90)
+            except requests.RequestException as exc:
+                last_error = f"{model}: {type(exc).__name__}"
+                LOG.info("Model call to %s failed: %s", host.split('/')[2], last_error)
+                continue
+            LOG.info("Model call %s on %s -> HTTP %s", model, host.split('/')[2], response.status_code)
             if response.status_code == 404:
                 last_error = f"{model} not found"
                 continue

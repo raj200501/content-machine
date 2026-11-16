@@ -306,6 +306,9 @@ def llm_check_command() -> None:
     if not settings.llm_api_key:
         console.print("No LLM_API_KEY set.")
         raise typer.Exit(1)
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
     console.print(f"Model replied: {llm_check(settings)!r}")
 
 
