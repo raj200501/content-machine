@@ -58,6 +58,33 @@ FORMAT_HELP = {
 }
 
 
+GRADER = """You are a harsh editor for an Instagram account that gives CS students career tips.
+Give each item ONE overall grade from 1 to 10. Most drafts are a 5 to 7. Be stingy:
+- A tip students have heard a hundred times ("quantify your impact", "show don't tell") is 5 or below
+  unless the example itself is unusually sharp.
+- A hook that is a label ("How to handle feedback", "Your approach to X") instead of a line that
+  makes a student stop scrolling is 6 or below.
+- Anything wrong, outdated, risky to say in a real interview, or that sounds like a robot is 3 or below.
+- 8 means as good as the calibration examples. 9 or 10 is rare.
+Numbers inside resume bullets are example figures; that is fine."""
+
+WEAK_EXAMPLE = {
+    "redline": {
+        "hook": "How to improve your resume bullets.",
+        "weak": "Worked on a web app.",
+        "strong": "Developed a web application using modern technologies, improving efficiency by 30%.",
+        "why": "Quantify your impact.",
+    },
+    "chat": {
+        "hook": "How to answer the weakness question.",
+        "question": "What is your greatest weakness?",
+        "bad": "I'm a perfectionist.",
+        "good": "I sometimes take on too much, but I'm learning to prioritize and delegate tasks better.",
+        "why": "Show self-awareness.",
+    },
+}
+
+
 def _words(text: str) -> int:
     return len(str(text or "").split())
 
@@ -85,6 +112,8 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
             return f"banned content in {key}"
         if CLAIMS.search(value) and not (kind == "redline" and key in ("weak", "strong")):
             return f"money or percent claim in {key}"
+        if re.search(r"[\[\]{}<>`*_]|\bX\b|\bY\b|\.\.\.", value):
+            return f"placeholder or markup in {key}"
     if kind == "redline" and not re.search(r"\d", item["strong"]):
         return "rewrite has no number"
     for hook in existing_hooks:
@@ -283,12 +312,12 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
             raw_grades = _chat(
                     settings,
                     [
-                        {"role": "system", "content": "You are a strict editor for career advice aimed at CS students."},
+                        {"role": "system", "content": GRADER},
                         {
                             "role": "user",
-                            "content": "Grade each item 1-10 for: specific, correct, useful today, sounds like a real person, "
-                            "and the hook matches the content. Numbers in resume bullets are example figures, which is fine. "
-                            "Reply with a JSON array of integers only, same order, like [8, 6, 9].\n"
+                            "content": "Calibration, already graded:\n"
+                            + json.dumps([{**examples[0], "grade": 8}, {**examples[1], "grade": 8}, {**WEAK_EXAMPLE[kind], "grade": 4}], indent=1)
+                            + "\n\nNow grade these. Reply with a JSON array of integers only, one per item, same order, like [6, 8, 5].\n"
                             + json.dumps(candidates, indent=1),
                         },
                     ],
