@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -123,6 +124,11 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
             LOG.info("Model call %s on %s -> HTTP %s", model, host.split('/')[2], response.status_code)
             if response.status_code == 404:
                 last_error = f"{model} not found"
+                continue
+            if response.status_code == 429 or response.status_code >= 500:
+                # Busy or rate-limited: wait a moment, then try the next model.
+                last_error = f"{model}: HTTP {response.status_code}"
+                time.sleep(3)
                 continue
             if response.status_code >= 400:
                 last_error = f"HTTP {response.status_code}: {response.text[:300]}"
