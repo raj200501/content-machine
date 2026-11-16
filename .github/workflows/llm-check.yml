@@ -20,5 +20,11 @@ jobs:
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}
-          LLM_MODEL: ${{ secrets.LLM_MODEL || 'gemini-flash-latest' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'gemini-2.5-flash' }}
         run: python -m app.cli llm-check
+      - name: Preview one batch of new tips (not saved)
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'gemini-2.5-flash' }}
+        run: python -m app.cli grow-preview

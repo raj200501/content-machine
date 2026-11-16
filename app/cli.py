@@ -312,6 +312,30 @@ def llm_check_command() -> None:
     console.print(f"Model replied: {llm_check(settings)!r}")
 
 
+@app.command("grow-preview")
+def grow_preview() -> None:
+    """Generate one batch of new tips into a throwaway database and print them."""
+    _db, settings = _ctx()
+    import json
+    import logging
+    import tempfile
+
+    from app.db import Database
+    from app.writing.library_growth import generated_items, grow_libraries
+
+    logging.basicConfig(level=logging.INFO)
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Database(Path(tmp) / "preview.db", settings)
+        scratch.init_db()
+        stats = grow_libraries(scratch, settings)
+        console.print(f"generated={stats.get('generated')} kept={stats.get('kept')} skipped={stats.get('skipped', '')}")
+        for reason in stats.get("rejected", [])[:20]:
+            console.print(f"  rejected: {reason}")
+        for kind in ("redline", "chat"):
+            for key, item in generated_items(scratch, kind):
+                console.print(f"[{kind} {key}] " + json.dumps(item)[:600])
+
+
 @app.command("trends")
 def trends() -> None:
     """Run the trend radar now and print what's outperforming in the niche."""
