@@ -332,6 +332,7 @@ def grow_preview() -> None:
         for reason in stats.get("rejected", [])[:20]:
             console.print(f"  rejected: {reason}")
         console.print(f"grades: {stats.get('grades')}")
+        console.print(f"grader said: {stats.get('grader_reply')}")
         for kind in ("redline", "chat"):
             for key, item in generated_items(scratch, kind):
                 console.print(f"[{kind} {key}] " + json.dumps(item)[:600])

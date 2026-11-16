@@ -172,12 +172,24 @@ def llm_check(settings: Settings) -> str:
 
 
 def _as_number(value) -> float:
-    if isinstance(value, dict):
-        value = next((v for v in value.values() if isinstance(v, (int, float, str))), 0)
-    try:
-        return float(str(value).strip())
-    except ValueError:
+    """A grade from whatever shape the grader used: 8, "8/10", {"grade": 8}, {"specific": 8, ...}."""
+
+    if isinstance(value, bool):
         return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        for key in ("grade", "score", "overall", "total", "rating", "final"):
+            for name, inner in value.items():
+                if name.lower() == key:
+                    return _as_number(inner)
+        numbers = [float(v) for v in value.values() if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 10]
+        return sum(numbers) / len(numbers) if numbers else 0.0
+    if isinstance(value, list):
+        numbers = [_as_number(v) for v in value]
+        return sum(numbers) / len(numbers) if numbers else 0.0
+    match = re.search(r"\d+(\.\d+)?", str(value))
+    return float(match.group(0)) if match else 0.0
 
 
 def _json_block(text: str):
@@ -268,8 +280,7 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
             continue
         # Second opinion: grade each candidate; keep only the strong ones.
         try:
-            grades = _json_block(
-                _chat(
+            raw_grades = _chat(
                     settings,
                     [
                         {"role": "system", "content": "You are a strict editor for career advice aimed at CS students."},
@@ -283,7 +294,10 @@ def grow_libraries(db: Database, settings: Settings, per_kind: int = 6, every_da
                     ],
                     max_tokens=200,
                 )
-            )
+            grades = _json_block(raw_grades)
+            if isinstance(grades, dict):
+                grades = next((v for v in grades.values() if isinstance(v, list)), None)
+            stats.setdefault("grader_reply", {})[kind] = re.sub(r"\s+", " ", raw_grades)[:300]
         except Exception:
             grades = None
         if isinstance(grades, list):
