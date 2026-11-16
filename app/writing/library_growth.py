@@ -86,16 +86,60 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
     return None
 
 
+VERTEX_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.5-flash-lite"]
+
+
+def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -> str:
+    """Google Cloud Vertex AI 'express mode' keys (they start with "AQ.")."""
+
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+    contents = [
+        {"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
+        for m in messages
+        if m["role"] != "system"
+    ]
+    body = {"contents": contents, "generationConfig": {"temperature": 0.8, "maxOutputTokens": max_tokens}}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+    preferred = [settings.llm_model] if settings.llm_model and "latest" not in settings.llm_model else []
+    last_error = ""
+    for model in preferred + VERTEX_MODELS:
+        response = requests.post(
+            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent",
+            params={"key": settings.llm_api_key},
+            json=body,
+            timeout=120,
+        )
+        if response.status_code == 404:
+            last_error = f"{model} not found"
+            continue
+        if response.status_code >= 400:
+            raise RuntimeError(f"Vertex HTTP {response.status_code}: {response.text[:200]}")
+        parts = response.json()["candidates"][0]["content"]["parts"]
+        return "".join(part.get("text", "") for part in parts)
+    raise RuntimeError(f"No Vertex model available ({last_error})")
+
+
 def _chat(settings: Settings, messages: list[dict], max_tokens: int = 3000) -> str:
+    key = settings.llm_api_key
+    if key.startswith("AQ.") or "aiplatform.googleapis.com" in settings.llm_base_url:
+        return _vertex_express(settings, messages, max_tokens)
     response = requests.post(
         f"{settings.llm_base_url.rstrip('/')}/chat/completions",
-        headers={"Authorization": f"Bearer {settings.llm_api_key}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": settings.llm_model, "messages": messages, "temperature": 0.8, "max_tokens": max_tokens},
         timeout=120,
     )
     if response.status_code >= 400:
         raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
     return response.json()["choices"][0]["message"]["content"]
+
+
+def llm_check(settings: Settings) -> str:
+    """One tiny request, to confirm the key works (prints no secrets)."""
+
+    reply = _chat(settings, [{"role": "user", "content": "Reply with exactly: ok"}], max_tokens=10)
+    return reply.strip()[:40]
 
 
 def _json_block(text: str):

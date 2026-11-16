@@ -297,6 +297,18 @@ def jobs_page(out: Path = typer.Option(Path("site/index.html"), help="Where to w
     console.print(f"wrote {out}")
 
 
+@app.command("llm-check")
+def llm_check_command() -> None:
+    """Confirm the optional LLM key works (used for weekly new tips)."""
+    _db, settings = _ctx()
+    from app.writing.library_growth import llm_check
+
+    if not settings.llm_api_key:
+        console.print("No LLM_API_KEY set.")
+        raise typer.Exit(1)
+    console.print(f"Model replied: {llm_check(settings)!r}")
+
+
 @app.command("trends")
 def trends() -> None:
     """Run the trend radar now and print what's outperforming in the niche."""
