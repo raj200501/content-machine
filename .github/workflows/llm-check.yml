@@ -17,12 +17,14 @@ jobs:
           python-version: "3.11"
       - run: pip install -q -r requirements.txt
       - name: Try the key
+        continue-on-error: true  # diagnostic only: read the log, no failure emails
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}
           LLM_MODEL: ${{ secrets.LLM_MODEL || 'gemini-2.5-flash' }}
         run: python -m app.cli llm-check
       - name: Preview one batch of new tips (not saved)
+        continue-on-error: true
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai' }}

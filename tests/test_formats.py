@@ -137,7 +137,7 @@ def test_library_growth_checks_and_uses_generated_items(tmp_path: Path, monkeypa
 
     def fake_chat(settings, messages, max_tokens=3000):
         calls.append(messages[-1]["content"][:20])
-        if "Grade each item" in messages[-1]["content"]:
+        if "grade these" in messages[-1]["content"]:
             return "[9]"
         return json.dumps([good, bad])
 

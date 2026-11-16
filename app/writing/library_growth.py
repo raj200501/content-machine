@@ -123,11 +123,51 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
 
 
 LAST_MODEL = [""]
-VERTEX_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.5-flash-lite"]
+# Used only if Google's model list can't be read. Google retires models over time,
+# so the list below is a fallback; normally the live list decides.
+FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+_MODEL_CACHE: dict[str, list[str]] = {}
+GEMINI_HOST = "https://generativelanguage.googleapis.com/v1beta"
+SKIP_MODEL_WORDS = ("image", "tts", "audio", "live", "embedding", "vision", "robotics", "computer-use", "native", "learnlm", "gemma", "aqa")
+
+
+def _model_rank(name: str) -> tuple:
+    version = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
+    unstable = any(word in name for word in ("preview", "exp", "experimental"))
+    return (
+        unstable,  # stable first
+        "lite" in name,  # full flash before lite
+        "latest" in name,  # pinned versions before moving aliases
+        -(float(version.group(1)) if version else 0.0),  # newest version first
+        name,
+    )
+
+
+def available_models(settings: Settings) -> list[str]:
+    """Flash models this key can call right now, best first (cached per run)."""
+
+    key = settings.llm_api_key
+    if key in _MODEL_CACHE:
+        return _MODEL_CACHE[key]
+    names: list[str] = []
+    try:
+        response = requests.get(f"{GEMINI_HOST}/models", params={"key": key, "pageSize": 200}, timeout=30)
+        if response.status_code < 400:
+            for model in response.json().get("models", []):
+                name = str(model.get("name", "")).removeprefix("models/")
+                methods = model.get("supportedGenerationMethods") or []
+                if "generateContent" in methods and "flash" in name and not any(word in name for word in SKIP_MODEL_WORDS):
+                    names.append(name)
+        LOG.info("Model list -> HTTP %s, %d usable flash models", response.status_code, len(names))
+    except requests.RequestException as exc:
+        LOG.info("Model list failed: %s", type(exc).__name__)
+    names = sorted(set(names), key=_model_rank)[:6] or list(FALLBACK_MODELS)
+    _MODEL_CACHE[key] = names
+    return names
 
 
 def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -> str:
-    """Google Cloud Vertex AI 'express mode' keys (they start with "AQ.")."""
+    """Google keys: Gemini API (AI Studio) first, then Vertex AI express mode."""
 
     system = "\n".join(m["content"] for m in messages if m["role"] == "system")
     contents = [
@@ -140,41 +180,48 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
     body = {"contents": contents, "generationConfig": {"temperature": 0.8, "maxOutputTokens": max(max_tokens, 8192)}}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    preferred = [settings.llm_model] if settings.llm_model else []
+    live = available_models(settings)
+    preferred = [settings.llm_model] if settings.llm_model in live or not live else []
+    models = preferred + [m for m in live if m not in preferred]
     last_error = ""
-    # Same request shape works on both Google endpoints: AI Studio (Gemini API) first,
-    # then Vertex AI express mode.
     hosts = [
-        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        f"{GEMINI_HOST}/models/{{model}}:generateContent",
         "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent",
     ]
     for host in hosts:
-        for model in preferred + [m for m in VERTEX_MODELS if m not in preferred]:
-            try:
-                response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=90)
-            except requests.RequestException as exc:
-                last_error = f"{model}: {type(exc).__name__}"
-                LOG.info("Model call to %s failed: %s", host.split('/')[2], last_error)
+        host_name = host.split("/")[2]
+        for model in models:
+            for attempt in range(2):
+                try:
+                    response = requests.post(host.format(model=model), params={"key": settings.llm_api_key}, json=body, timeout=120)
+                except requests.RequestException as exc:
+                    last_error = f"{model}: {type(exc).__name__}"
+                    LOG.info("Model call %s on %s failed: %s", model, host_name, type(exc).__name__)
+                    response = None
+                    break
+                LOG.info("Model call %s on %s -> HTTP %s", model, host_name, response.status_code)
+                if response.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+                    time.sleep(8)  # overloaded or rate-limited: one patient retry
+                    continue
+                break
+            if response is None:
                 continue
-            LOG.info("Model call %s on %s -> HTTP %s", model, host.split('/')[2], response.status_code)
-            if response.status_code == 404:
-                last_error = f"{model} not found"
-                continue
-            if response.status_code == 429 or response.status_code >= 500:
-                # Busy or rate-limited: wait a moment, then try the next model.
+            if response.status_code == 404 or response.status_code == 429 or response.status_code >= 500:
                 last_error = f"{model}: HTTP {response.status_code}"
-                time.sleep(3)
                 continue
             if response.status_code >= 400:
-                last_error = f"HTTP {response.status_code}: {response.text[:300]}"
+                last_error = f"{host_name} HTTP {response.status_code}: {response.text[:300]}"
                 break  # key not valid for this host: try the next host
             candidate = (response.json().get("candidates") or [{}])[0]
             parts = (candidate.get("content") or {}).get("parts") or []
             text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
             if text.strip():
-                LAST_MODEL[0] = f"{model} via {host.split('/')[2]}"
+                LAST_MODEL[0] = f"{model} via {host_name}"
                 return text
             last_error = f"{model}: empty reply ({candidate.get('finishReason')})"
+        if host_name == "generativelanguage.googleapis.com" and last_error.startswith("gemini") and "HTTP 4" not in last_error:
+            # The key works on the Gemini API but models were busy; Vertex won't help.
+            break
     raise RuntimeError(f"Google model call failed ({last_error})")
 
 
