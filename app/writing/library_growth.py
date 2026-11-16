@@ -86,6 +86,7 @@ def check(kind: str, item: dict, existing_hooks: list[str]) -> str | None:
     return None
 
 
+LAST_MODEL = [""]
 VERTEX_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.5-flash-lite"]
 
 
@@ -98,7 +99,9 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
         for m in messages
         if m["role"] != "system"
     ]
-    body = {"contents": contents, "generationConfig": {"temperature": 0.8, "maxOutputTokens": max_tokens}}
+    # Newer Gemini models "think" first and that counts against the output limit,
+    # so leave plenty of room.
+    body = {"contents": contents, "generationConfig": {"temperature": 0.8, "maxOutputTokens": max(max_tokens, 8192)}}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
     preferred = [settings.llm_model] if settings.llm_model else []
@@ -118,8 +121,13 @@ def _vertex_express(settings: Settings, messages: list[dict], max_tokens: int) -
             if response.status_code >= 400:
                 last_error = f"HTTP {response.status_code}: {response.text[:300]}"
                 break  # key not valid for this host: try the next host
-            parts = response.json()["candidates"][0]["content"]["parts"]
-            return "".join(part.get("text", "") for part in parts)
+            candidate = (response.json().get("candidates") or [{}])[0]
+            parts = (candidate.get("content") or {}).get("parts") or []
+            text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+            if text.strip():
+                LAST_MODEL[0] = f"{model} via {host.split('/')[2]}"
+                return text
+            last_error = f"{model}: empty reply ({candidate.get('finishReason')})"
     raise RuntimeError(f"Google model call failed ({last_error})")
 
 
@@ -141,8 +149,8 @@ def _chat(settings: Settings, messages: list[dict], max_tokens: int = 3000) -> s
 def llm_check(settings: Settings) -> str:
     """One tiny request, to confirm the key works (prints no secrets)."""
 
-    reply = _chat(settings, [{"role": "user", "content": "Reply with exactly: ok"}], max_tokens=10)
-    return reply.strip()[:40]
+    reply = _chat(settings, [{"role": "user", "content": "Reply with exactly: ok"}], max_tokens=64)
+    return f"{reply.strip()[:40]} (model: {LAST_MODEL[0] or settings.llm_model})"
 
 
 def _json_block(text: str):
